@@ -13,18 +13,22 @@ function validateField(field, value) {
     case 'ownerName':
       if (!stringVal || !stringVal.trim()) return 'Owner / authorized applicant name is required.';
       return '';
-    case 'phone':
+    case 'phone': {
       if (!stringVal || !stringVal.trim()) return 'Contact phone number is required.';
-      if (!/^[+0-9\s-]{10,16}$/.test(stringVal.trim())) {
+      const digitsOnly = stringVal.replace(/\D/g, '');
+      if (digitsOnly.length < 10 || digitsOnly.length > 15) {
         return 'Enter a valid phone number (at least 10 digits).';
       }
       return '';
-    case 'email':
+    }
+    case 'email': {
       if (!stringVal || !stringVal.trim()) return 'Official business email is required.';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(stringVal.trim())) {
-        return 'Enter a valid email address.';
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(stringVal.trim())) {
+        return 'Enter a valid email address (e.g. name@pharmacy.com).';
       }
       return '';
+    }
     case 'streetAddress':
       if (!stringVal || !stringVal.trim()) return 'Street address and building details are required.';
       return '';
@@ -33,6 +37,12 @@ function validateField(field, value) {
       return '';
     case 'area':
       if (!stringVal || !stringVal.trim()) return 'Area / locality name is required.';
+      return '';
+    case 'postalCode':
+      if (!stringVal || !stringVal.trim()) return '';
+      if (!/^\d{4,6}$/.test(stringVal.trim())) {
+        return 'Postal code should be a 4-6 digit number.';
+      }
       return '';
     case 'latitude': {
       const num = Number(value);
@@ -51,9 +61,50 @@ function validateField(field, value) {
     case 'issuingAuthority':
       if (!stringVal || !stringVal.trim()) return 'Issuing regulatory authority is required.';
       return '';
+    case 'licenseExpiryDate': {
+      if (!stringVal) return '';
+      const expiry = new Date(stringVal);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (expiry < today) {
+        return 'License expiry date cannot be in the past for an active pharmacy application.';
+      }
+      return '';
+    }
     default:
       return '';
   }
+}
+
+function validateWeeklyHours(hours) {
+  if (!hours || typeof hours !== 'object') {
+    return 'Operating hours schedule is required.';
+  }
+
+  const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  let hasAtLeastOneOpenDay = false;
+
+  for (const day of days) {
+    const schedule = hours[day];
+    if (schedule && schedule.isOpen) {
+      hasAtLeastOneOpenDay = true;
+      if (!schedule.is24Hours) {
+        if (!schedule.openTime || !schedule.closeTime) {
+          return `Please specify both opening and closing times for ${day}.`;
+        }
+        if (schedule.openTime >= schedule.closeTime) {
+          const capitalizedDay = day.charAt(0).toUpperCase() + day.slice(1);
+          return `Closing time must be after opening time on ${capitalizedDay}.`;
+        }
+      }
+    }
+  }
+
+  if (!hasAtLeastOneOpenDay) {
+    return 'At least one operating day must be marked open for patient access.';
+  }
+
+  return '';
 }
 
 function formatWeeklyHours(hours) {
@@ -93,9 +144,13 @@ test('Pharmacy Business Info Validation', () => {
 
   assert.equal(validateField('phone', ''), 'Contact phone number is required.');
   assert.equal(validateField('phone', '123'), 'Enter a valid phone number (at least 10 digits).');
+  // Phone containing only punctuation must fail
+  assert.equal(validateField('phone', '+--   --++'), 'Enter a valid phone number (at least 10 digits).');
   assert.equal(validateField('phone', '+8801712345678'), '');
+  assert.equal(validateField('phone', '01712-345678'), '');
 
-  assert.equal(validateField('email', 'invalid-email'), 'Enter a valid email address.');
+  assert.equal(validateField('email', 'invalid-email'), 'Enter a valid email address (e.g. name@pharmacy.com).');
+  assert.equal(validateField('email', 'invalid@domain'), 'Enter a valid email address (e.g. name@pharmacy.com).');
   assert.equal(validateField('email', 'owner@pharmacy.com'), '');
 });
 
@@ -103,6 +158,11 @@ test('Pharmacy Address & Location Coordinates Validation', () => {
   assert.equal(validateField('streetAddress', ''), 'Street address and building details are required.');
   assert.equal(validateField('city', ''), 'City or district is required.');
   assert.equal(validateField('area', ''), 'Area / locality name is required.');
+
+  // Postal code
+  assert.equal(validateField('postalCode', ''), '');
+  assert.equal(validateField('postalCode', '1212'), '');
+  assert.equal(validateField('postalCode', 'abc'), 'Postal code should be a 4-6 digit number.');
 
   // Boundary coordinates
   assert.equal(validateField('latitude', 23.8103), '');
@@ -114,13 +174,61 @@ test('Pharmacy Address & Location Coordinates Validation', () => {
   assert.equal(validateField('longitude', -190), 'Longitude must be between -180 and 180.');
 });
 
-test('Pharmacy License Validation', () => {
+test('Pharmacy License & Expiry Validation', () => {
   assert.equal(validateField('licenseNo', ''), 'Pharmacy Drug / Trade License number is required.');
   assert.equal(validateField('licenseNo', '12'), 'License number must be at least 4 characters.');
   assert.equal(validateField('licenseNo', 'DL-DHK-99231'), '');
 
   assert.equal(validateField('issuingAuthority', ''), 'Issuing regulatory authority is required.');
   assert.equal(validateField('issuingAuthority', 'DGDA'), '');
+
+  // Expired license
+  assert.equal(
+    validateField('licenseExpiryDate', '2020-01-01'),
+    'License expiry date cannot be in the past for an active pharmacy application.'
+  );
+
+  // Future license
+  const futureYear = new Date().getFullYear() + 2;
+  assert.equal(validateField('licenseExpiryDate', `${futureYear}-12-31`), '');
+});
+
+test('Opening Hours Validation & Schedule Rules', () => {
+  // All closed days must fail
+  const allClosedSchedule = {
+    monday: { isOpen: false, openTime: '08:00', closeTime: '22:00', is24Hours: false },
+    tuesday: { isOpen: false, openTime: '08:00', closeTime: '22:00', is24Hours: false },
+    wednesday: { isOpen: false, openTime: '08:00', closeTime: '22:00', is24Hours: false },
+    thursday: { isOpen: false, openTime: '08:00', closeTime: '22:00', is24Hours: false },
+    friday: { isOpen: false, openTime: '08:00', closeTime: '22:00', is24Hours: false },
+    saturday: { isOpen: false, openTime: '08:00', closeTime: '22:00', is24Hours: false },
+    sunday: { isOpen: false, openTime: '08:00', closeTime: '22:00', is24Hours: false },
+  };
+  assert.equal(
+    validateWeeklyHours(allClosedSchedule),
+    'At least one operating day must be marked open for patient access.'
+  );
+
+  // Close time before or equal to open time must fail
+  const invalidTimeSchedule = {
+    monday: { isOpen: true, openTime: '18:00', closeTime: '09:00', is24Hours: false },
+  };
+  assert.equal(
+    validateWeeklyHours(invalidTimeSchedule),
+    'Closing time must be after opening time on Monday.'
+  );
+
+  // Valid mixed schedule
+  const validSchedule = {
+    monday: { isOpen: true, openTime: '08:00', closeTime: '22:00', is24Hours: false },
+    tuesday: { isOpen: true, openTime: '08:00', closeTime: '22:00', is24Hours: false },
+    wednesday: { isOpen: true, openTime: '08:00', closeTime: '22:00', is24Hours: false },
+    thursday: { isOpen: true, openTime: '08:00', closeTime: '22:00', is24Hours: false },
+    friday: { isOpen: false, openTime: '00:00', closeTime: '00:00', is24Hours: false },
+    saturday: { isOpen: true, openTime: '00:00', closeTime: '00:00', is24Hours: true },
+    sunday: { isOpen: true, openTime: '09:00', closeTime: '21:00', is24Hours: false },
+  };
+  assert.equal(validateWeeklyHours(validSchedule), '');
 });
 
 test('Opening Hours Formatter', () => {
@@ -151,4 +259,3 @@ test('Trust Boundary: Application initial status must always be pending', () => 
   assert.equal(applicationResponse.status, 'pending');
   assert.notEqual(applicationResponse.status, 'verified');
 });
-

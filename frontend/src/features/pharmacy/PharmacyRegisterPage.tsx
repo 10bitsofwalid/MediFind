@@ -1,5 +1,5 @@
 // src/features/pharmacy/PharmacyRegisterPage.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type {
   PharmacyApplicationPayload,
@@ -12,6 +12,7 @@ import {
   getPharmacyApplication,
   createDefaultWeeklyHours,
   formatWeeklyHours,
+  validateWeeklyHours,
   isMockApiEnabled,
   setMockApiEnabled,
   PharmacyServiceError,
@@ -41,34 +42,78 @@ interface FormErrors {
 
 type FormStep = 'business' | 'address' | 'license' | 'hours' | 'review';
 
+interface FormDraft {
+  currentStep?: FormStep;
+  maxStepReached?: number;
+  name?: string;
+  ownerName?: string;
+  phone?: string;
+  email?: string;
+  streetAddress?: string;
+  city?: string;
+  area?: string;
+  postalCode?: string;
+  latitude?: number;
+  longitude?: number;
+  licenseNo?: string;
+  issuingAuthority?: string;
+  licenseExpiryDate?: string;
+  licenseType?: string;
+  weeklyHours?: WeeklyHours;
+  additionalNotes?: string;
+}
+
+const DRAFT_STORAGE_KEY = 'medifind_pharmacy_form_draft';
+
+function getSavedDraft(): FormDraft | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as FormDraft;
+  } catch {
+    // fallback
+  }
+  return null;
+}
+
 export const PharmacyRegisterPage: React.FC = () => {
   const navigate = useNavigate();
+  const initialDraft = useMemo(() => getSavedDraft(), []);
 
-  // Active step
-  const [currentStep, setCurrentStep] = useState<FormStep>('business');
+  // Active step & highest step reached for flexible navigation
+  const [currentStep, setCurrentStep] = useState<FormStep>(() => {
+    if (initialDraft?.currentStep && ['business', 'address', 'license', 'hours', 'review'].includes(initialDraft.currentStep)) {
+      return initialDraft.currentStep as FormStep;
+    }
+    return 'business';
+  });
+  const [maxStepReached, setMaxStepReached] = useState<number>(() => {
+    return typeof initialDraft?.maxStepReached === 'number' ? initialDraft.maxStepReached : 0;
+  });
 
   // Form Field State
-  const [name, setName] = useState('');
-  const [ownerName, setOwnerName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState<string>(() => initialDraft?.name || '');
+  const [ownerName, setOwnerName] = useState<string>(() => initialDraft?.ownerName || '');
+  const [phone, setPhone] = useState<string>(() => initialDraft?.phone || '');
+  const [email, setEmail] = useState<string>(() => initialDraft?.email || '');
 
-  const [streetAddress, setStreetAddress] = useState('');
-  const [city, setCity] = useState('Dhaka');
-  const [area, setArea] = useState('');
-  const [postalCode, setPostalCode] = useState('');
+  const [streetAddress, setStreetAddress] = useState<string>(() => initialDraft?.streetAddress || '');
+  const [city, setCity] = useState<string>(() => initialDraft?.city || 'Dhaka');
+  const [area, setArea] = useState<string>(() => initialDraft?.area || '');
+  const [postalCode, setPostalCode] = useState<string>(() => initialDraft?.postalCode || '');
 
-  const [latitude, setLatitude] = useState<number>(23.8103);
-  const [longitude, setLongitude] = useState<number>(90.4125);
+  const [latitude, setLatitude] = useState<number>(() => initialDraft?.latitude ?? 23.8103);
+  const [longitude, setLongitude] = useState<number>(() => initialDraft?.longitude ?? 90.4125);
 
-  const [licenseNo, setLicenseNo] = useState('');
-  const [issuingAuthority, setIssuingAuthority] = useState('Directorate General of Drug Administration (DGDA)');
-  const [licenseExpiryDate, setLicenseExpiryDate] = useState('');
-  const [licenseType, setLicenseType] = useState('Retail Pharmacy');
+  const [licenseNo, setLicenseNo] = useState<string>(() => initialDraft?.licenseNo || '');
+  const [issuingAuthority, setIssuingAuthority] = useState<string>(
+    () => initialDraft?.issuingAuthority || 'Directorate General of Drug Administration (DGDA)'
+  );
+  const [licenseExpiryDate, setLicenseExpiryDate] = useState<string>(() => initialDraft?.licenseExpiryDate || '');
+  const [licenseType, setLicenseType] = useState<string>(() => initialDraft?.licenseType || 'Retail Pharmacy');
 
-  const [weeklyHours, setWeeklyHours] = useState<WeeklyHours>(createDefaultWeeklyHours());
+  const [weeklyHours, setWeeklyHours] = useState<WeeklyHours>(() => initialDraft?.weeklyHours || createDefaultWeeklyHours());
   const [declarationConfirmed, setDeclarationConfirmed] = useState(false);
-  const [additionalNotes, setAdditionalNotes] = useState('');
+  const [additionalNotes, setAdditionalNotes] = useState<string>(() => initialDraft?.additionalNotes || '');
 
   // UI feedback state
   const [errors, setErrors] = useState<FormErrors>({});
@@ -81,14 +126,34 @@ export const PharmacyRegisterPage: React.FC = () => {
   // Successful submission result from server
   const [submittedApplication, setSubmittedApplication] = useState<PharmacyApplicationResponse | null>(null);
 
-  // Check for existing pending application on load
+  // Check for existing pending application on initial mount
   useEffect(() => {
     let isMounted = true;
+
     async function checkExisting() {
       try {
         const existing = await getPharmacyApplication();
         if (isMounted && existing && existing.data) {
           setSubmittedApplication(existing);
+          // Pre-populate form state from existing application
+          const d = existing.data;
+          setName(d.name || '');
+          setOwnerName(d.ownerName || '');
+          setPhone(d.phone || '');
+          setEmail(d.email || '');
+          setStreetAddress(d.streetAddress || '');
+          setCity(d.city || 'Dhaka');
+          setArea(d.area || '');
+          setPostalCode(d.postalCode || '');
+          if (d.latitude) setLatitude(d.latitude);
+          if (d.longitude) setLongitude(d.longitude);
+          setLicenseNo(d.licenseNo || '');
+          setIssuingAuthority(d.issuingAuthority || '');
+          setLicenseExpiryDate(d.licenseExpiryDate || '');
+          setLicenseType(d.licenseType || 'Retail Pharmacy');
+          if (d.structuredHours) setWeeklyHours(d.structuredHours);
+          if (d.notes) setAdditionalNotes(d.notes);
+          setMaxStepReached(4);
         }
       } catch {
         // Backend might be offline or no application yet; safe to ignore
@@ -99,6 +164,57 @@ export const PharmacyRegisterPage: React.FC = () => {
       isMounted = false;
     };
   }, []);
+
+  // Auto-save form draft to sessionStorage on changes
+  useEffect(() => {
+    if (!submittedApplication) {
+      try {
+        const draft = {
+          currentStep,
+          maxStepReached,
+          name,
+          ownerName,
+          phone,
+          email,
+          streetAddress,
+          city,
+          area,
+          postalCode,
+          latitude,
+          longitude,
+          licenseNo,
+          issuingAuthority,
+          licenseExpiryDate,
+          licenseType,
+          weeklyHours,
+          additionalNotes,
+        };
+        sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+      } catch {
+        // storage quota exceeded or disabled
+      }
+    }
+  }, [
+    currentStep,
+    maxStepReached,
+    name,
+    ownerName,
+    phone,
+    email,
+    streetAddress,
+    city,
+    area,
+    postalCode,
+    latitude,
+    longitude,
+    licenseNo,
+    issuingAuthority,
+    licenseExpiryDate,
+    licenseType,
+    weeklyHours,
+    additionalNotes,
+    submittedApplication,
+  ]);
 
   const handleDevAdapterToggle = (enabled: boolean) => {
     setUseDevAdapter(enabled);
@@ -116,18 +232,22 @@ export const PharmacyRegisterPage: React.FC = () => {
       case 'ownerName':
         if (!stringVal || !stringVal.trim()) return 'Owner / authorized applicant name is required.';
         return '';
-      case 'phone':
+      case 'phone': {
         if (!stringVal || !stringVal.trim()) return 'Contact phone number is required.';
-        if (!/^[+0-9\s-]{10,16}$/.test(stringVal.trim())) {
+        const digitsOnly = stringVal.replace(/\D/g, '');
+        if (digitsOnly.length < 10 || digitsOnly.length > 15) {
           return 'Enter a valid phone number (at least 10 digits).';
         }
         return '';
-      case 'email':
+      }
+      case 'email': {
         if (!stringVal || !stringVal.trim()) return 'Official business email is required.';
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(stringVal.trim())) {
-          return 'Enter a valid email address.';
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (!emailRegex.test(stringVal.trim())) {
+          return 'Enter a valid email address (e.g. name@pharmacy.com).';
         }
         return '';
+      }
       case 'streetAddress':
         if (!stringVal || !stringVal.trim()) return 'Street address and building details are required.';
         return '';
@@ -136,6 +256,12 @@ export const PharmacyRegisterPage: React.FC = () => {
         return '';
       case 'area':
         if (!stringVal || !stringVal.trim()) return 'Area / locality name is required.';
+        return '';
+      case 'postalCode':
+        if (!stringVal || !stringVal.trim()) return '';
+        if (!/^\d{4,6}$/.test(stringVal.trim())) {
+          return 'Postal code should be a 4-6 digit number.';
+        }
         return '';
       case 'latitude': {
         const num = Number(value);
@@ -154,6 +280,16 @@ export const PharmacyRegisterPage: React.FC = () => {
       case 'issuingAuthority':
         if (!stringVal || !stringVal.trim()) return 'Issuing regulatory authority is required.';
         return '';
+      case 'licenseExpiryDate': {
+        if (!stringVal) return '';
+        const expiry = new Date(stringVal);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (expiry < today) {
+          return 'License expiry date cannot be in the past for an active pharmacy application.';
+        }
+        return '';
+      }
       default:
         return '';
     }
@@ -192,23 +328,34 @@ export const PharmacyRegisterPage: React.FC = () => {
     } else if (step === 'license') {
       const licenseErr = validateField('licenseNo', licenseNo);
       const authErr = validateField('issuingAuthority', issuingAuthority);
+      const expiryErr = validateField('licenseExpiryDate', licenseExpiryDate);
       if (licenseErr) stepErrors.licenseNo = licenseErr;
       if (authErr) stepErrors.issuingAuthority = authErr;
+      if (expiryErr) stepErrors.licenseExpiryDate = expiryErr;
+    } else if (step === 'hours') {
+      const hoursErr = validateWeeklyHours(weeklyHours);
+      if (hoursErr) stepErrors.hours = hoursErr;
     }
 
     setErrors(stepErrors);
     return Object.keys(stepErrors).length === 0;
   };
 
+  const advanceToStep = (nextStep: FormStep, nextIdx: number) => {
+    setCurrentStep(nextStep);
+    setMaxStepReached((prev) => Math.max(prev, nextIdx));
+    window.scrollTo({ top: 120, behavior: 'smooth' });
+  };
+
   const handleNextStep = () => {
     if (currentStep === 'business') {
-      if (validateStep('business')) setCurrentStep('address');
+      if (validateStep('business')) advanceToStep('address', 1);
     } else if (currentStep === 'address') {
-      if (validateStep('address')) setCurrentStep('license');
+      if (validateStep('address')) advanceToStep('license', 2);
     } else if (currentStep === 'license') {
-      if (validateStep('license')) setCurrentStep('hours');
+      if (validateStep('license')) advanceToStep('hours', 3);
     } else if (currentStep === 'hours') {
-      setCurrentStep('review');
+      if (validateStep('hours')) advanceToStep('review', 4);
     }
   };
 
@@ -217,6 +364,7 @@ export const PharmacyRegisterPage: React.FC = () => {
     else if (currentStep === 'license') setCurrentStep('address');
     else if (currentStep === 'hours') setCurrentStep('license');
     else if (currentStep === 'review') setCurrentStep('hours');
+    window.scrollTo({ top: 120, behavior: 'smooth' });
   };
 
   // Submit Handler
@@ -229,6 +377,7 @@ export const PharmacyRegisterPage: React.FC = () => {
     const isBusinessValid = validateStep('business');
     const isAddressValid = validateStep('address');
     const isLicenseValid = validateStep('license');
+    const isHoursValid = validateStep('hours');
 
     if (!isBusinessValid) {
       setCurrentStep('business');
@@ -240,6 +389,10 @@ export const PharmacyRegisterPage: React.FC = () => {
     }
     if (!isLicenseValid) {
       setCurrentStep('license');
+      return;
+    }
+    if (!isHoursValid) {
+      setCurrentStep('hours');
       return;
     }
 
@@ -285,6 +438,7 @@ export const PharmacyRegisterPage: React.FC = () => {
       const response = await submitPharmacyApplication(payload);
       // Server returned confirmation with authoritative 'pending' status
       setSubmittedApplication(response);
+      sessionStorage.removeItem(DRAFT_STORAGE_KEY);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: unknown) {
       console.error('Pharmacy application submission error:', err);
@@ -882,8 +1036,8 @@ export const PharmacyRegisterPage: React.FC = () => {
       >
         {stepConfig.map((s, idx) => {
           const isActive = currentStep === s.id;
-          const isPassed =
-            stepConfig.findIndex((x) => x.id === currentStep) > idx;
+          const isUnlocked = idx <= maxStepReached;
+          const isCompleted = idx < maxStepReached;
           const Icon = s.icon;
 
           return (
@@ -891,9 +1045,10 @@ export const PharmacyRegisterPage: React.FC = () => {
               key={s.id}
               type="button"
               onClick={() => {
-                // Allow clicking previous steps or valid steps
-                if (isPassed || isActive) {
+                // Allow clicking any step previously reached or current
+                if (isUnlocked) {
                   setCurrentStep(s.id as FormStep);
+                  window.scrollTo({ top: 120, behavior: 'smooth' });
                 }
               }}
               style={{
@@ -904,29 +1059,30 @@ export const PharmacyRegisterPage: React.FC = () => {
                 borderRadius: 'var(--radius-md)',
                 border: isActive
                   ? '1px solid var(--color-action-primary)'
-                  : isPassed
+                  : isCompleted
                   ? '1px solid var(--color-status-available)'
                   : '1px solid var(--color-border-default)',
                 backgroundColor: isActive
                   ? 'var(--color-action-primary)'
-                  : isPassed
+                  : isCompleted
                   ? 'var(--color-status-available-bg)'
                   : 'var(--color-surface-panel)',
                 color: isActive
                   ? '#ffffff'
-                  : isPassed
+                  : isCompleted
                   ? 'var(--color-status-available)'
                   : 'var(--color-text-secondary)',
                 fontSize: '13px',
                 fontWeight: isActive ? 600 : 500,
-                cursor: isPassed || isActive ? 'pointer' : 'default',
+                cursor: isUnlocked ? 'pointer' : 'not-allowed',
+                opacity: isUnlocked ? 1 : 0.65,
                 whiteSpace: 'nowrap',
                 minHeight: '44px',
                 flexShrink: 0,
               }}
               aria-current={isActive ? 'step' : undefined}
             >
-              {isPassed ? (
+              {isCompleted ? (
                 <CheckCircle2 size={16} aria-hidden="true" />
               ) : (
                 <Icon size={16} aria-hidden="true" />
@@ -1558,7 +1714,11 @@ export const PharmacyRegisterPage: React.FC = () => {
 
               <OpeningHoursBuilder
                 hours={weeklyHours}
-                onChange={(updated) => setWeeklyHours(updated)}
+                onChange={(updated) => {
+                  setWeeklyHours(updated);
+                  if (errors.hours) setErrors((prev) => ({ ...prev, hours: '' }));
+                }}
+                error={errors.hours}
               />
             </section>
           )}
@@ -1828,39 +1988,53 @@ export const PharmacyRegisterPage: React.FC = () => {
                 <ArrowRight size={16} aria-hidden="true" />
               </button>
             ) : (
-              <button
-                type="submit"
-                disabled={isSubmitting || !declarationConfirmed}
-                className="btn-primary"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '12px 28px',
-                  fontSize: '15px',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: isSubmitting || !declarationConfirmed ? 'var(--color-border-default)' : 'var(--color-action-primary)',
-                  color: isSubmitting || !declarationConfirmed ? 'var(--color-text-secondary)' : '#ffffff',
-                  border: 'none',
-                  cursor: isSubmitting || !declarationConfirmed ? 'not-allowed' : 'pointer',
-                  minHeight: '48px',
-                  fontWeight: 600,
-                  boxShadow: 'var(--shadow-sm)',
-                }}
-                aria-busy={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="spinner-small" aria-hidden="true" />
-                    <span>Submitting to Verification Queue...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send size={16} aria-hidden="true" />
-                    <span>Submit Pharmacy Application</span>
-                  </>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                {!declarationConfirmed && (
+                  <span
+                    role="note"
+                    style={{
+                      fontSize: '12px',
+                      color: 'var(--color-status-caution)',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Please confirm the legal declaration above to enable submission.
+                  </span>
                 )}
-              </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !declarationConfirmed}
+                  className="btn-primary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '12px 28px',
+                    fontSize: '15px',
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: isSubmitting || !declarationConfirmed ? 'var(--color-border-default)' : 'var(--color-action-primary)',
+                    color: isSubmitting || !declarationConfirmed ? 'var(--color-text-secondary)' : '#ffffff',
+                    border: 'none',
+                    cursor: isSubmitting || !declarationConfirmed ? 'not-allowed' : 'pointer',
+                    minHeight: '48px',
+                    fontWeight: 600,
+                    boxShadow: 'var(--shadow-sm)',
+                  }}
+                  aria-busy={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="spinner-small" aria-hidden="true" />
+                      <span>Submitting to Verification Queue...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={16} aria-hidden="true" />
+                      <span>Submit Pharmacy Application</span>
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
         </div>

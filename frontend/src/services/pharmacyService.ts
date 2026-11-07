@@ -96,9 +96,13 @@ export function createDefaultWeeklyHours(): WeeklyHours {
 
 /**
  * Formats structured weekly hours into a human-readable string.
- * e.g., "Mon-Thu: 08:30 - 22:30, Fri: 14:00 - 22:00, Sat-Sun: 08:30 - 22:30"
+ * e.g., "Mon: 08:30 - 22:30; Tue: 08:30 - 22:30; ..."
  */
-export function formatWeeklyHours(hours: WeeklyHours): string {
+export function formatWeeklyHours(hours: WeeklyHours | undefined | null): string {
+  if (!hours || typeof hours !== 'object') {
+    return 'No operating hours defined';
+  }
+
   const dayNames: { key: DayOfWeek; label: string }[] = [
     { key: 'monday', label: 'Mon' },
     { key: 'tuesday', label: 'Tue' },
@@ -123,6 +127,50 @@ export function formatWeeklyHours(hours: WeeklyHours): string {
   }
 
   return formattedParts.join('; ');
+}
+
+/**
+ * Validates that the weekly operating schedule has at least one open day
+ * and valid start/end times.
+ */
+export function validateWeeklyHours(hours: WeeklyHours | undefined | null): string {
+  if (!hours || typeof hours !== 'object') {
+    return 'Operating hours schedule is required.';
+  }
+
+  const days: DayOfWeek[] = [
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday',
+  ];
+
+  let hasAtLeastOneOpenDay = false;
+
+  for (const day of days) {
+    const schedule = hours[day];
+    if (schedule && schedule.isOpen) {
+      hasAtLeastOneOpenDay = true;
+      if (!schedule.is24Hours) {
+        if (!schedule.openTime || !schedule.closeTime) {
+          return `Please specify both opening and closing times for ${day}.`;
+        }
+        if (schedule.openTime >= schedule.closeTime) {
+          const capitalizedDay = day.charAt(0).toUpperCase() + day.slice(1);
+          return `Closing time must be after opening time on ${capitalizedDay}.`;
+        }
+      }
+    }
+  }
+
+  if (!hasAtLeastOneOpenDay) {
+    return 'At least one operating day must be marked open for patient access.';
+  }
+
+  return '';
 }
 
 /**

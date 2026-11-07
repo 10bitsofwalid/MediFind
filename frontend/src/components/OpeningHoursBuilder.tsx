@@ -8,6 +8,7 @@ interface OpeningHoursBuilderProps {
   hours: WeeklyHours;
   onChange: (updatedHours: WeeklyHours) => void;
   disabled?: boolean;
+  error?: string;
 }
 
 const DAYS: { key: DayOfWeek; label: string }[] = [
@@ -24,6 +25,7 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
   hours,
   onChange,
   disabled = false,
+  error,
 }) => {
   const handleDayChange = (day: DayOfWeek, patch: Partial<DaySchedule>) => {
     const current = hours[day] || {
@@ -38,13 +40,13 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
     });
   };
 
-  const handleApplyMondayToWeekdays = () => {
+  const handleApplyMondayToAll = () => {
     const mon = hours.monday;
     if (!mon) return;
 
     const updated: WeeklyHours = { ...hours };
-    const weekdays: DayOfWeek[] = ['tuesday', 'wednesday', 'thursday', 'saturday', 'sunday'];
-    weekdays.forEach((day) => {
+    const allDays: DayOfWeek[] = ['tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    allDays.forEach((day) => {
       updated[day] = { ...mon };
     });
     onChange(updated);
@@ -89,6 +91,27 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
 
   return (
     <div className="opening-hours-builder" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Top Error Alert if present */}
+      {error && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 14px',
+            backgroundColor: 'var(--color-status-problem-bg)',
+            border: '1px solid rgba(180, 35, 47, 0.25)',
+            borderRadius: 'var(--radius-md)',
+            color: 'var(--color-status-problem)',
+            fontSize: '13px',
+          }}
+        >
+          <AlertCircle size={16} aria-hidden="true" />
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Quick Action Presets */}
       <div
         style={{
@@ -105,7 +128,7 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           <button
             type="button"
-            onClick={handleApplyMondayToWeekdays}
+            onClick={handleApplyMondayToAll}
             disabled={disabled}
             className="btn-secondary"
             style={{

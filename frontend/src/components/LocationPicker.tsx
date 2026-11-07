@@ -18,8 +18,12 @@ interface LocationPickerProps {
 function MapRecenter({ lat, lng }: { lat: number; lng: number }) {
   const map = useMap();
   useEffect(() => {
-    if (!isNaN(lat) && !isNaN(lng)) {
-      map.setView([lat, lng], map.getZoom(), { animate: true });
+    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      try {
+        map.setView([lat, lng], map.getZoom(), { animate: true });
+      } catch {
+        // Safe fallback if leaflet throws on bounds
+      }
     }
   }, [lat, lng, map]);
   return null;
