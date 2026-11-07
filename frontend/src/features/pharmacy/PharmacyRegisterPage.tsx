@@ -76,7 +76,6 @@ export const PharmacyRegisterPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [serverErrorDetails, setServerErrorDetails] = useState<{ code?: string; fields?: Record<string, string> } | null>(null);
-  const [isCheckingExisting, setIsCheckingExisting] = useState(true);
   const [useDevAdapter, setUseDevAdapter] = useState(isMockApiEnabled());
 
   // Successful submission result from server
@@ -88,13 +87,11 @@ export const PharmacyRegisterPage: React.FC = () => {
     async function checkExisting() {
       try {
         const existing = await getPharmacyApplication();
-        if (isMounted && existing) {
+        if (isMounted && existing && existing.data) {
           setSubmittedApplication(existing);
         }
       } catch {
         // Backend might be offline or no application yet; safe to ignore
-      } finally {
-        if (isMounted) setIsCheckingExisting(false);
       }
     }
     checkExisting();
@@ -330,32 +327,10 @@ export const PharmacyRegisterPage: React.FC = () => {
     }
   };
 
-  if (isCheckingExisting) {
-    return (
-      <div
-        role="status"
-        aria-live="polite"
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '50vh',
-          flexDirection: 'column',
-          gap: '12px',
-        }}
-      >
-        <div className="spinner" aria-hidden="true" />
-        <span style={{ color: 'var(--color-text-secondary)', fontSize: '15px' }}>
-          Checking pharmacy application records...
-        </span>
-      </div>
-    );
-  }
-
   // -------------------------------------------------------------
   // RENDER: PENDING REVIEW CONFIRMATION
   // -------------------------------------------------------------
-  if (submittedApplication) {
+  if (submittedApplication && submittedApplication.data) {
     const appData = submittedApplication.data;
 
     return (

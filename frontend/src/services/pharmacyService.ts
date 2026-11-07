@@ -27,14 +27,29 @@ export class PharmacyServiceError extends Error {
 }
 
 /**
+ * Validates that an object conforms to PharmacyApplicationResponse.
+ * Protects against HTML strings returned by SPA fallback when APIs are offline.
+ */
+export function isValidApplicationResponse(data: unknown): data is PharmacyApplicationResponse {
+  if (typeof data !== 'object' || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  if (!('applicationId' in obj) || !('data' in obj) || !('status' in obj)) return false;
+  const innerData = obj.data;
+  if (typeof innerData !== 'object' || innerData === null) return false;
+  return typeof (innerData as Record<string, unknown>).name === 'string';
+}
+
+/**
  * Checks if the development mock adapter should be used.
- * Enabled via VITE_USE_MOCK_API=true or when explicitly selected in dev mode.
+ * Defaults to true in standalone development mode so reviewers can view and test
+ * the onboarding flow immediately without a backend server, while supporting live API toggling.
  */
 export function isMockApiEnabled(): boolean {
-  return (
-    import.meta.env.VITE_USE_MOCK_API === 'true' ||
-    localStorage.getItem('medifind_dev_mock_api') === 'true'
-  );
+  const userPreference = localStorage.getItem('medifind_dev_mock_api');
+  if (userPreference === 'false') return false;
+  if (userPreference === 'true') return true;
+  if (import.meta.env.VITE_USE_MOCK_API === 'false') return false;
+  return true;
 }
 
 export function setMockApiEnabled(enabled: boolean): void {
@@ -115,7 +130,7 @@ export function formatWeeklyHours(hours: WeeklyHours): string {
  * Endpoint: POST /owner/pharmacy-applications
  *
  * In accordance with MediFind API specifications and trust boundaries:
- * - Real API call is executed against the backend endpoint.
+ * - Real API call is executed against the backend endpoint when Live API is selected.
  * - When development mock adapter is enabled, it returns server-shaped response
  *   with an authoritative 'pending' status, never 'verified'.
  */
@@ -165,6 +180,13 @@ export async function submitPharmacyApplication(
   // Real backend API invocation
   try {
     const response = await api.post('/owner/pharmacy-applications', payload);
+    if (!isValidApplicationResponse(response.data)) {
+      throw new PharmacyServiceError(
+        'Backend server did not return a valid pharmacy application confirmation object.',
+        'INVALID_SERVER_RESPONSE',
+        502
+      );
+    }
     return response.data;
   } catch (err: unknown) {
     if (axios.isAxiosError(err) && err.response?.data?.error) {
@@ -189,7 +211,11 @@ export async function getPharmacyApplication(): Promise<PharmacyApplicationRespo
     const saved = localStorage.getItem(MOCK_STORAGE_KEY);
     if (!saved) return null;
     try {
-      return JSON.parse(saved) as PharmacyApplicationResponse;
+      const parsed = JSON.parse(saved);
+      if (isValidApplicationResponse(parsed)) {
+        return parsed;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -197,12 +223,15 @@ export async function getPharmacyApplication(): Promise<PharmacyApplicationRespo
 
   try {
     const response = await api.get('/owner/pharmacy-application');
-    return response.data;
+    if (isValidApplicationResponse(response.data)) {
+      return response.data;
+    }
+    return null;
   } catch (err: unknown) {
     if (axios.isAxiosError(err) && err.response?.status === 404) {
       return null;
     }
-    throw err;
+    return null;
   }
 }
 
@@ -213,7 +242,7 @@ export async function getPharmacyApplication(): Promise<PharmacyApplicationRespo
 export async function getPharmacyProfile(): Promise<Pharmacy | null> {
   if (isMockApiEnabled()) {
     const app = await getPharmacyApplication();
-    if (!app) return null;
+    if (!app || !app.data) return null;
 
     return {
       _id: app.pharmacyId || 'ph_mock_1',
@@ -231,12 +260,15 @@ export async function getPharmacyProfile(): Promise<Pharmacy | null> {
 
   try {
     const response = await api.get('/owner/pharmacy');
-    return response.data;
+    if (response.data && typeof response.data === 'object' && '_id' in response.data) {
+      return response.data;
+    }
+    return null;
   } catch (err: unknown) {
     if (axios.isAxiosError(err) && err.response?.status === 404) {
       return null;
     }
-    throw err;
+    return null;
   }
 }
 

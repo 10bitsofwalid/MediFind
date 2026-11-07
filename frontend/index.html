@@ -4,7 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>MediFind - Pharmacy Operations & Onboarding</title>
+    <script>
+      // Fallback diagnostics to prevent silent blank screens if unexpected errors occur
+      window.addEventListener('error', function (e) {
+        if (!document.getElementById('root') || document.getElementById('root').childNodes.length === 0) {
+          var el = document.getElementById('app-diagnostic-error') || document.createElement('div');
+          el.id = 'app-diagnostic-error';
+          el.style = 'padding: 24px; color: #b4232f; background: #fdf2f2; border: 1px solid #b4232f; margin: 20px; border-radius: 8px; font-family: sans-serif;';
+          el.innerHTML = '<h3>Application Error:</h3><p>' + (e.message || e.error) + '</p><button onclick="window.location.reload()" style="padding: 8px 16px; background: #176b87; color: white; border: none; border-radius: 6px; cursor: pointer;">Reload Page</button>';
+          document.body.prepend(el);
+        }
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>

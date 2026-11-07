@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-lea
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, Navigation, Compass, AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface LocationPickerProps {
   latitude: number;
@@ -12,31 +13,6 @@ interface LocationPickerProps {
   error?: string;
   disabled?: boolean;
 }
-
-// Custom crisp SVG pin that does not rely on external png assets
-const pinIcon = L.divIcon({
-  className: 'medifind-map-pin',
-  html: `
-    <div style="
-      background-color: #176B87;
-      width: 32px;
-      height: 32px;
-      border-radius: 50% 50% 50% 0;
-      transform: rotate(-45deg);
-      border: 2px solid #ffffff;
-      box-shadow: 0 4px 12px rgba(23, 43, 58, 0.35);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: grab;
-    ">
-      <div style="width: 10px; height: 10px; border-radius: 50%; background-color: #ffffff; transform: rotate(45deg);"></div>
-    </div>
-  `,
-  iconSize: [32, 32],
-  iconAnchor: [16, 32],
-  popupAnchor: [0, -32],
-});
 
 // Component to recenter map smoothly when coordinates change externally
 function MapRecenter({ lat, lng }: { lat: number; lng: number }) {
@@ -83,6 +59,39 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
   const [geoSuccess, setGeoSuccess] = useState<boolean>(false);
   const [mapRenderError, setMapRenderError] = useState<boolean>(false);
   const markerRef = useRef<L.Marker>(null);
+
+  // Safely construct custom SVG pin icon inside useMemo to avoid top-level evaluation issues
+  const pinIcon = useMemo(() => {
+    try {
+      const Leaflet = (L as unknown as { default?: typeof L }).default || L;
+      if (!Leaflet || typeof Leaflet.divIcon !== 'function') return undefined;
+      return Leaflet.divIcon({
+        className: 'medifind-map-pin',
+        html: `
+          <div style="
+            background-color: #176B87;
+            width: 32px;
+            height: 32px;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            border: 2px solid #ffffff;
+            box-shadow: 0 4px 12px rgba(23, 43, 58, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+          ">
+            <div style="width: 10px; height: 10px; border-radius: 50%; background-color: #ffffff; transform: rotate(45deg);"></div>
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+        popupAnchor: [0, -32],
+      });
+    } catch {
+      return undefined;
+    }
+  }, []);
 
   // Validate coordinates
   const isValidLat = !isNaN(latitude) && latitude >= -90 && latitude <= 90;
@@ -268,73 +277,75 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         ))}
       </div>
 
-      {/* Interactive Leaflet Map */}
-      {!mapRenderError ? (
-        <div
-          style={{
-            width: '100%',
-            height: '280px',
-            borderRadius: 'var(--radius-lg)',
-            overflow: 'hidden',
-            border: error
-              ? '1px solid var(--color-status-problem)'
-              : '1px solid var(--color-border-default)',
-            position: 'relative',
-            zIndex: 1,
-          }}
-          aria-label="Interactive map for selecting pharmacy location"
-        >
-          <MapContainer
-            center={mapCenter}
-            zoom={15}
-            scrollWheelZoom={false}
-            style={{ width: '100%', height: '100%' }}
+      {/* Interactive Leaflet Map with ErrorBoundary */}
+      <ErrorBoundary fallbackTitle="Map component unavailable">
+        {!mapRenderError ? (
+          <div
+            style={{
+              width: '100%',
+              height: '280px',
+              borderRadius: 'var(--radius-lg)',
+              overflow: 'hidden',
+              border: error
+                ? '1px solid var(--color-status-problem)'
+                : '1px solid var(--color-border-default)',
+              position: 'relative',
+              zIndex: 1,
+            }}
+            aria-label="Interactive map for selecting pharmacy location"
           >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              maxZoom={19}
-            />
-            <Marker
-              position={mapCenter}
-              draggable={!disabled}
-              eventHandlers={{ dragend: handleDragEnd }}
-              ref={markerRef}
-              icon={pinIcon}
-            />
-            <MapRecenter lat={mapCenter[0]} lng={mapCenter[1]} />
-            <MapClickHandler
-              onLocationSelect={(lat, lng) => {
-                if (!disabled) onChange(lat, lng);
-              }}
-            />
-          </MapContainer>
-        </div>
-      ) : (
-        <div
-          style={{
-            padding: '24px',
-            textAlign: 'center',
-            backgroundColor: 'var(--color-surface-canvas)',
-            borderRadius: 'var(--radius-lg)',
-            border: '1px dashed var(--color-border-default)',
-            color: 'var(--color-text-secondary)',
-          }}
-        >
-          <Compass size={32} style={{ margin: '0 auto 8px', color: 'var(--color-text-secondary)' }} aria-hidden="true" />
-          <p style={{ fontSize: '14px', marginBottom: '8px' }}>
-            Map view unavailable. You can enter precise latitude and longitude directly below.
-          </p>
-          <button
-            type="button"
-            onClick={() => setMapRenderError(false)}
-            className="btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 12px' }}
+            <MapContainer
+              center={mapCenter}
+              zoom={15}
+              scrollWheelZoom={false}
+              style={{ width: '100%', height: '100%' }}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                maxZoom={19}
+              />
+              <Marker
+                position={mapCenter}
+                draggable={!disabled}
+                eventHandlers={{ dragend: handleDragEnd }}
+                ref={markerRef}
+                icon={pinIcon}
+              />
+              <MapRecenter lat={mapCenter[0]} lng={mapCenter[1]} />
+              <MapClickHandler
+                onLocationSelect={(lat, lng) => {
+                  if (!disabled) onChange(lat, lng);
+                }}
+              />
+            </MapContainer>
+          </div>
+        ) : (
+          <div
+            style={{
+              padding: '24px',
+              textAlign: 'center',
+              backgroundColor: 'var(--color-surface-canvas)',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px dashed var(--color-border-default)',
+              color: 'var(--color-text-secondary)',
+            }}
           >
-            <RotateCcw size={13} style={{ marginRight: '4px' }} aria-hidden="true" /> Retry Map
-          </button>
-        </div>
-      )}
+            <Compass size={32} style={{ margin: '0 auto 8px', color: 'var(--color-text-secondary)' }} aria-hidden="true" />
+            <p style={{ fontSize: '14px', marginBottom: '8px' }}>
+              Map view unavailable. You can enter precise latitude and longitude directly below.
+            </p>
+            <button
+              type="button"
+              onClick={() => setMapRenderError(false)}
+              className="btn-secondary"
+              style={{ fontSize: '12px', padding: '6px 12px' }}
+            >
+              <RotateCcw size={13} style={{ marginRight: '4px' }} aria-hidden="true" /> Retry Map
+            </button>
+          </div>
+        )}
+      </ErrorBoundary>
 
       {/* Manual Coordinate Inputs for Precision & Accessibility */}
       <div
@@ -456,4 +467,3 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
     </div>
   );
 };
-
