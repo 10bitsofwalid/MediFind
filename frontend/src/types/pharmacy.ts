@@ -59,6 +59,8 @@ export interface PharmacyApplicationResponse {
   message: string;
   data: PharmacyApplicationPayload;
   verificationReason?: string;
+  decisionReason?: string;
+  nextStep?: string;
 }
 
 export interface Pharmacy {
@@ -66,16 +68,49 @@ export interface Pharmacy {
   id?: string;
   ownerId?: string;
   name: string;
-  address: string;
+  ownerName?: string;
   phone: string;
+  email?: string;
+  address: string;
+  streetAddress?: string;
+  city?: string;
+  area?: string;
+  postalCode?: string;
+  formattedAddress?: string;
   licenseNo?: string;
+  issuingAuthority?: string;
+  licenseExpiryDate?: string;
+  licenseType?: string;
   location: LocationGeoJSON;
+  latitude?: number;
+  longitude?: number;
   openingHours: string;
+  structuredHours?: WeeklyHours;
   status: VerificationStatus;
   verificationReason?: string;
+  decisionReason?: string;
+  nextStep?: string;
   distanceKm?: number;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface PharmacyProfileUpdatePayload {
+  name?: string;
+  ownerName?: string;
+  phone?: string;
+  email?: string;
+  streetAddress?: string;
+  city?: string;
+  area?: string;
+  postalCode?: string;
+  formattedAddress?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  location?: LocationGeoJSON;
+  openingHours?: string;
+  structuredHours?: WeeklyHours;
 }
 
 export interface StockItem {

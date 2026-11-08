@@ -5,8 +5,10 @@ import type {
   PharmacyApplicationPayload,
   PharmacyApplicationResponse,
   Pharmacy,
+  PharmacyProfileUpdatePayload,
   WeeklyHours,
   DayOfWeek,
+  VerificationStatus,
 } from '../types/pharmacy';
 
 const MOCK_STORAGE_KEY = 'medifind_mock_pharmacy_application';
@@ -292,24 +294,47 @@ export async function getPharmacyProfile(): Promise<Pharmacy | null> {
     const app = await getPharmacyApplication();
     if (!app || !app.data) return null;
 
+    const formatted = app.data.formattedAddress || `${app.data.streetAddress}, ${app.data.area}, ${app.data.city}`;
+
     return {
       _id: app.pharmacyId || 'ph_mock_1',
+      id: app.pharmacyId || 'ph_mock_1',
       name: app.data.name,
-      address: app.data.formattedAddress || app.data.streetAddress,
+      ownerName: app.data.ownerName,
       phone: app.data.phone,
+      email: app.data.email,
+      address: formatted,
+      streetAddress: app.data.streetAddress,
+      city: app.data.city,
+      area: app.data.area,
+      postalCode: app.data.postalCode,
+      formattedAddress: formatted,
       licenseNo: app.data.licenseNo,
-      location: app.data.location,
+      issuingAuthority: app.data.issuingAuthority,
+      licenseExpiryDate: app.data.licenseExpiryDate,
+      licenseType: app.data.licenseType,
+      location: app.data.location || {
+        type: 'Point',
+        coordinates: [app.data.longitude, app.data.latitude],
+      },
+      latitude: app.data.latitude,
+      longitude: app.data.longitude,
       openingHours: app.data.openingHours,
+      structuredHours: app.data.structuredHours,
       status: app.status,
-      verificationReason: app.verificationReason,
+      verificationReason: app.verificationReason || app.decisionReason,
+      decisionReason: app.decisionReason || app.verificationReason,
+      nextStep: app.nextStep,
       createdAt: app.submittedAt,
+      updatedAt: new Date().toISOString(),
     };
   }
 
   try {
     const response = await api.get('/owner/pharmacy');
-    if (response.data && typeof response.data === 'object' && '_id' in response.data) {
-      return response.data;
+    const profile = response.data?.data || response.data;
+    if (profile && typeof profile === 'object' && ('_id' in profile || 'id' in profile)) {
+      return profile;
     }
     return null;
   } catch (err: unknown) {
@@ -318,6 +343,333 @@ export async function getPharmacyProfile(): Promise<Pharmacy | null> {
     }
     return null;
   }
+}
+
+/**
+ * Updates the owner's pharmacy profile fields.
+ * Endpoint: PATCH /owner/pharmacy
+ *
+ * Validates updated fields and persists changes to the backend API or mock storage.
+ * Does not report success until the server or service adapter confirms the update.
+ */
+export async function updatePharmacyProfile(
+  payload: PharmacyProfileUpdatePayload
+): Promise<Pharmacy> {
+  // Client-side field validation before submission
+  const fieldErrors: Record<string, string> = {};
+
+  if (payload.name !== undefined) {
+    if (!payload.name.trim()) fieldErrors.name = 'Pharmacy trade name is required.';
+    else if (payload.name.trim().length < 3) fieldErrors.name = 'Pharmacy name must be at least 3 characters.';
+  }
+
+  if (payload.ownerName !== undefined) {
+    if (!payload.ownerName.trim()) fieldErrors.ownerName = 'Owner / contact person name is required.';
+    else if (payload.ownerName.trim().length < 2) fieldErrors.ownerName = 'Owner name must be at least 2 characters.';
+  }
+
+  if (payload.phone !== undefined) {
+    if (!payload.phone.trim()) {
+      fieldErrors.phone = 'Contact phone number is required.';
+    } else {
+      const digitsOnly = payload.phone.replace(/\D/g, '');
+      if (digitsOnly.length < 10 || digitsOnly.length > 15) {
+        fieldErrors.phone = 'Enter a valid contact phone number (10-15 digits).';
+      }
+    }
+  }
+
+  if (payload.email !== undefined) {
+    if (!payload.email.trim()) {
+      fieldErrors.email = 'Official business email is required.';
+    } else {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(payload.email.trim())) {
+        fieldErrors.email = 'Enter a valid email address (e.g., pharmacy@domain.com).';
+      }
+    }
+  }
+
+  if (payload.streetAddress !== undefined && !payload.streetAddress.trim()) {
+    fieldErrors.streetAddress = 'Street address is required.';
+  }
+
+  if (payload.city !== undefined && !payload.city.trim()) {
+    fieldErrors.city = 'City or district is required.';
+  }
+
+  if (payload.area !== undefined && !payload.area.trim()) {
+    fieldErrors.area = 'Area / locality name is required.';
+  }
+
+  if (payload.postalCode !== undefined && payload.postalCode.trim()) {
+    if (!/^\d{4,6}$/.test(payload.postalCode.trim())) {
+      fieldErrors.postalCode = 'Postal code should be a 4-6 digit number.';
+    }
+  }
+
+  if (payload.latitude !== undefined) {
+    if (isNaN(payload.latitude) || payload.latitude < -90 || payload.latitude > 90) {
+      fieldErrors.latitude = 'Latitude must be between -90 and 90.';
+    }
+  }
+
+  if (payload.longitude !== undefined) {
+    if (isNaN(payload.longitude) || payload.longitude < -180 || payload.longitude > 180) {
+      fieldErrors.longitude = 'Longitude must be between -180 and 180.';
+    }
+  }
+
+  if (payload.structuredHours !== undefined) {
+    const hoursErr = validateWeeklyHours(payload.structuredHours);
+    if (hoursErr) {
+      fieldErrors.openingHours = hoursErr;
+    }
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new PharmacyServiceError(
+      'Please correct the highlighted fields before saving.',
+      'VALIDATION_ERROR',
+      422,
+      fieldErrors
+    );
+  }
+
+  if (isMockApiEnabled()) {
+    // Development Mock Adapter: simulates server latency & authoritative persistence
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    const savedRaw = localStorage.getItem(MOCK_STORAGE_KEY);
+    let app: PharmacyApplicationResponse;
+
+    if (savedRaw) {
+      try {
+        app = JSON.parse(savedRaw);
+      } catch {
+        app = seedSamplePharmacy('pending');
+      }
+    } else {
+      app = seedSamplePharmacy('pending');
+    }
+
+    // Merge updated payload fields into application data
+    const updatedData: PharmacyApplicationPayload = {
+      ...app.data,
+      name: payload.name !== undefined ? payload.name.trim() : app.data.name,
+      ownerName: payload.ownerName !== undefined ? payload.ownerName.trim() : app.data.ownerName,
+      phone: payload.phone !== undefined ? payload.phone.trim() : app.data.phone,
+      email: payload.email !== undefined ? payload.email.trim().toLowerCase() : app.data.email,
+      streetAddress: payload.streetAddress !== undefined ? payload.streetAddress.trim() : app.data.streetAddress,
+      city: payload.city !== undefined ? payload.city.trim() : app.data.city,
+      area: payload.area !== undefined ? payload.area.trim() : app.data.area,
+      postalCode: payload.postalCode !== undefined ? payload.postalCode.trim() : app.data.postalCode,
+      formattedAddress:
+        payload.formattedAddress ||
+        `${payload.streetAddress || app.data.streetAddress}, ${payload.area || app.data.area}, ${
+          payload.city || app.data.city
+        }${payload.postalCode ? ' - ' + payload.postalCode : ''}`,
+      latitude: payload.latitude !== undefined ? payload.latitude : app.data.latitude,
+      longitude: payload.longitude !== undefined ? payload.longitude : app.data.longitude,
+      location:
+        payload.location ||
+        (payload.latitude !== undefined && payload.longitude !== undefined
+          ? { type: 'Point', coordinates: [payload.longitude, payload.latitude] }
+          : app.data.location),
+      openingHours:
+        payload.openingHours ||
+        (payload.structuredHours ? formatWeeklyHours(payload.structuredHours) : app.data.openingHours),
+      structuredHours: payload.structuredHours || app.data.structuredHours,
+    };
+
+    app.data = updatedData;
+    localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(app));
+
+    const updatedProfile: Pharmacy = {
+      _id: app.pharmacyId || 'ph_mock_1',
+      id: app.pharmacyId || 'ph_mock_1',
+      name: updatedData.name,
+      ownerName: updatedData.ownerName,
+      phone: updatedData.phone,
+      email: updatedData.email,
+      address: updatedData.formattedAddress,
+      streetAddress: updatedData.streetAddress,
+      city: updatedData.city,
+      area: updatedData.area,
+      postalCode: updatedData.postalCode,
+      formattedAddress: updatedData.formattedAddress,
+      licenseNo: updatedData.licenseNo,
+      issuingAuthority: updatedData.issuingAuthority,
+      licenseExpiryDate: updatedData.licenseExpiryDate,
+      licenseType: updatedData.licenseType,
+      location: updatedData.location,
+      latitude: updatedData.latitude,
+      longitude: updatedData.longitude,
+      openingHours: updatedData.openingHours,
+      structuredHours: updatedData.structuredHours,
+      status: app.status,
+      verificationReason: app.verificationReason || app.decisionReason,
+      decisionReason: app.decisionReason || app.verificationReason,
+      nextStep: app.nextStep,
+      createdAt: app.submittedAt,
+      updatedAt: new Date().toISOString(),
+    };
+
+    return updatedProfile;
+  }
+
+  // Real backend API invocation
+  try {
+    const response = await api.patch('/owner/pharmacy', payload);
+    const updated = response.data?.data || response.data;
+    if (!updated || typeof updated !== 'object') {
+      throw new PharmacyServiceError('Server returned invalid profile update response.', 'INVALID_RESPONSE', 502);
+    }
+    return updated;
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response?.data?.error) {
+      const errorData = err.response.data.error;
+      throw new PharmacyServiceError(
+        errorData.message || 'Failed to update pharmacy profile.',
+        errorData.code,
+        err.response.status,
+        errorData.fields
+      );
+    }
+    throw err;
+  }
+}
+
+/**
+ * Updates opening hours schedule on the server.
+ * Endpoint: PUT /owner/pharmacy/opening-hours
+ */
+export async function updateOpeningHours(
+  hours: WeeklyHours
+): Promise<{ openingHours: string; structuredHours: WeeklyHours }> {
+  const err = validateWeeklyHours(hours);
+  if (err) {
+    throw new PharmacyServiceError(err, 'VALIDATION_ERROR', 422, { openingHours: err });
+  }
+
+  const formatted = formatWeeklyHours(hours);
+
+  if (isMockApiEnabled()) {
+    await updatePharmacyProfile({
+      structuredHours: hours,
+      openingHours: formatted,
+    });
+    return { openingHours: formatted, structuredHours: hours };
+  }
+
+  try {
+    const res = await api.put('/owner/pharmacy/opening-hours', {
+      structuredHours: hours,
+      openingHours: formatted,
+    });
+    return res.data?.data || res.data || { openingHours: formatted, structuredHours: hours };
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response?.data?.error) {
+      const errorData = err.response.data.error;
+      throw new PharmacyServiceError(
+        errorData.message || 'Failed to update operating hours schedule.',
+        errorData.code,
+        err.response.status,
+        errorData.fields
+      );
+    }
+    throw err;
+  }
+}
+
+/**
+ * Changes mock verification status in development mode to test
+ * Pending, Verified, Rejected, and Suspended UI flows.
+ */
+export function setMockVerificationStatus(
+  status: VerificationStatus,
+  decisionReason?: string,
+  nextStep?: string
+): PharmacyApplicationResponse | null {
+  const saved = localStorage.getItem(MOCK_STORAGE_KEY);
+  let app: PharmacyApplicationResponse;
+
+  if (saved) {
+    try {
+      app = JSON.parse(saved);
+    } catch {
+      app = seedSamplePharmacy(status);
+    }
+  } else {
+    app = seedSamplePharmacy(status);
+  }
+
+  app.status = status;
+  app.verificationReason = decisionReason;
+  app.decisionReason = decisionReason;
+  app.nextStep = nextStep;
+
+  localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(app));
+  return app;
+}
+
+/**
+ * Seeds a realistic sample pharmacy in mock storage for testing and reviewer evaluation.
+ */
+export function seedSamplePharmacy(
+  status: VerificationStatus = 'pending'
+): PharmacyApplicationResponse {
+  const defaultHours = createDefaultWeeklyHours();
+  const samplePayload: PharmacyApplicationPayload = {
+    name: 'MediCare Central Pharmacy',
+    ownerName: 'Dr. Rafiqul Islam, R.Ph',
+    phone: '+8801712345678',
+    email: 'contact@medicarecentral.com',
+    streetAddress: 'House 42, Road 11, Block D',
+    area: 'Banani',
+    city: 'Dhaka',
+    postalCode: '1213',
+    formattedAddress: 'House 42, Road 11, Block D, Banani, Dhaka - 1213',
+    licenseNo: 'DL-DHK-2024-8849',
+    issuingAuthority: 'Directorate General of Drug Administration (DGDA)',
+    licenseExpiryDate: '2028-12-31',
+    licenseType: 'Retail Drug Trade License (Model Pharmacy)',
+    latitude: 23.7925,
+    longitude: 90.4078,
+    location: {
+      type: 'Point',
+      coordinates: [90.4078, 23.7925],
+    },
+    openingHours: formatWeeklyHours(defaultHours),
+    structuredHours: defaultHours,
+    notes: 'Ground floor corner pharmacy near Banani Supermarket with temperature-controlled medicine storage.',
+  };
+
+  let reason: string | undefined;
+  let nextStep: string | undefined;
+
+  if (status === 'rejected') {
+    reason = 'Uploaded Drug Trade License certificate expired or name does not match national registry.';
+    nextStep = 'Please upload a renewed DGDA trade certificate and correct the legal trade name in your application.';
+  } else if (status === 'suspended') {
+    reason = 'Repeated customer complaints regarding inaccurate reported stock availability under investigation.';
+    nextStep = 'Contact MediFind Compliance at compliance@medifind.dev with your audit reference number to arrange re-audit.';
+  }
+
+  const sampleApp: PharmacyApplicationResponse = {
+    applicationId: 'app_sample_demo_882',
+    pharmacyId: 'ph_sample_demo_882',
+    status,
+    submittedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    message: 'Pharmacy onboarding application in state: ' + status,
+    data: samplePayload,
+    verificationReason: reason,
+    decisionReason: reason,
+    nextStep,
+  };
+
+  localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(sampleApp));
+  return sampleApp;
 }
 
 /**

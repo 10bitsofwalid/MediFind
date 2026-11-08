@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../app/useAuth';
 import type { Role } from '../types/pharmacy';
-import { PlusCircle, LayoutDashboard, UserCheck, Menu, X } from 'lucide-react';
+import { PlusCircle, LayoutDashboard, Building2, UserCheck, Menu, X } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
@@ -11,8 +11,9 @@ export const Navbar: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
-    { to: '/pharmacy/register', label: 'Pharmacy Onboarding', icon: PlusCircle },
-    { to: '/pharmacy/dashboard', label: 'Pharmacy Workspace', icon: LayoutDashboard },
+    { to: '/pharmacy/dashboard', label: 'Owner Workspace', icon: LayoutDashboard },
+    { to: '/pharmacy/profile', label: 'Pharmacy Profile', icon: Building2 },
+    { to: '/pharmacy/register', label: 'Onboarding Application', icon: PlusCircle },
   ];
 
   return (

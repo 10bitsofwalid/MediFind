@@ -3,6 +3,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { PharmacyRegisterPage } from '../features/pharmacy/PharmacyRegisterPage';
 import { PharmacyDashboard } from '../features/pharmacy/PharmacyDashboard';
+import { PharmacyProfilePage } from '../features/pharmacy/PharmacyProfilePage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 
 export const AppRoutes: React.FC = () => {
@@ -20,6 +21,16 @@ export const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['PHARMACY', 'ADMIN']}>
             <PharmacyDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Pharmacy Profile Viewing & Editing Flow */}
+      <Route
+        path="/pharmacy/profile"
+        element={
+          <ProtectedRoute allowedRoles={['PHARMACY', 'ADMIN']}>
+            <PharmacyProfilePage />
           </ProtectedRoute>
         }
       />
