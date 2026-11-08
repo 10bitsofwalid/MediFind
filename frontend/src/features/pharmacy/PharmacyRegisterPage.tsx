@@ -19,6 +19,7 @@ import {
 } from '../../services/pharmacyService';
 import { LocationPicker } from '../../components/LocationPicker';
 import { OpeningHoursBuilder } from '../../components/OpeningHoursBuilder';
+import { DEFAULT_LATITUDE, DEFAULT_LONGITUDE } from '../../config/constants';
 import {
   Building2,
   MapPin,
@@ -101,8 +102,8 @@ export const PharmacyRegisterPage: React.FC = () => {
   const [area, setArea] = useState<string>(() => initialDraft?.area || '');
   const [postalCode, setPostalCode] = useState<string>(() => initialDraft?.postalCode || '');
 
-  const [latitude, setLatitude] = useState<number>(() => initialDraft?.latitude ?? 23.8103);
-  const [longitude, setLongitude] = useState<number>(() => initialDraft?.longitude ?? 90.4125);
+  const [latitude, setLatitude] = useState<number>(() => initialDraft?.latitude ?? DEFAULT_LATITUDE);
+  const [longitude, setLongitude] = useState<number>(() => initialDraft?.longitude ?? DEFAULT_LONGITUDE);
 
   const [licenseNo, setLicenseNo] = useState<string>(() => initialDraft?.licenseNo || '');
   const [issuingAuthority, setIssuingAuthority] = useState<string>(

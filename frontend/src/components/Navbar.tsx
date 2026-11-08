@@ -1,20 +1,36 @@
 // src/components/Navbar.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../app/useAuth';
 import type { Role } from '../types/pharmacy';
-import { PlusCircle, LayoutDashboard, Building2, UserCheck, Menu, X } from 'lucide-react';
+import { PlusCircle, LayoutDashboard, Building2, UserCheck, Menu, X, LogIn } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
   const { user, switchRole } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const navLinks = [
-    { to: '/pharmacy/dashboard', label: 'Owner Workspace', icon: LayoutDashboard },
-    { to: '/pharmacy/profile', label: 'Pharmacy Profile', icon: Building2 },
-    { to: '/pharmacy/register', label: 'Onboarding Application', icon: PlusCircle },
-  ];
+  // Dynamic role-aware navigation links (resolves UI-02)
+  const navLinks = useMemo(() => {
+    if (user?.role === 'CUSTOMER') {
+      return [
+        { to: '/login', label: 'Account / Sign In', icon: LogIn },
+        { to: '/pharmacy/register', label: 'Register Pharmacy', icon: PlusCircle },
+      ];
+    }
+    if (user?.role === 'ADMIN') {
+      return [
+        { to: '/pharmacy/dashboard', label: 'Admin Workspace', icon: LayoutDashboard },
+        { to: '/pharmacy/profile', label: 'Pharmacy Profile', icon: Building2 },
+        { to: '/pharmacy/register', label: 'Onboarding Application', icon: PlusCircle },
+      ];
+    }
+    return [
+      { to: '/pharmacy/dashboard', label: 'Owner Workspace', icon: LayoutDashboard },
+      { to: '/pharmacy/profile', label: 'Pharmacy Profile', icon: Building2 },
+      { to: '/pharmacy/register', label: 'Onboarding Application', icon: PlusCircle },
+    ];
+  }, [user?.role]);
 
   return (
     <header
@@ -50,22 +66,7 @@ export const Navbar: React.FC = () => {
           }}
           aria-label="MediFind Pharmacy Operations Home"
         >
-          <div
-            style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: 'var(--radius-md)',
-              backgroundColor: 'var(--color-action-primary)',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              fontSize: '18px',
-              boxShadow: 'var(--shadow-sm)',
-            }}
-            aria-hidden="true"
-          >
+          <div className="brand-logo-icon" aria-hidden="true">
             M
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -178,42 +179,60 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile Drawer Menu */}
+      {/* Mobile Drawer Backdrop & Menu (resolves UI-05) */}
       {mobileMenuOpen && (
-        <nav
-          className="mobile-nav-drawer"
-          aria-label="Mobile Navigation"
-          style={{
-            padding: '12px 16px',
-            backgroundColor: 'var(--color-surface-panel)',
-            borderTop: '1px solid var(--color-border-default)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-          }}
-        >
-          {navLinks.map(({ to, label, icon: Icon }) => (
-            <Link
-              key={to}
-              to={to}
-              onClick={() => setMobileMenuOpen(false)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px',
-                borderRadius: 'var(--radius-md)',
-                fontSize: '15px',
-                textDecoration: 'none',
-                color: location.pathname === to ? 'var(--color-action-primary)' : 'var(--color-text-primary)',
-                backgroundColor: location.pathname === to ? 'var(--color-action-subtle)' : 'transparent',
-              }}
-            >
-              <Icon size={18} aria-hidden="true" />
-              <span>{label}</span>
-            </Link>
-          ))}
-        </nav>
+        <>
+          <div
+            onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
+            style={{
+              position: 'fixed',
+              top: '64px',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(23, 43, 58, 0.35)',
+              zIndex: 90,
+            }}
+          />
+          <nav
+            className="mobile-nav-drawer"
+            aria-label="Mobile Navigation"
+            style={{
+              position: 'relative',
+              zIndex: 95,
+              padding: '12px 16px',
+              backgroundColor: 'var(--color-surface-panel)',
+              borderTop: '1px solid var(--color-border-default)',
+              boxShadow: 'var(--shadow-md)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            }}
+          >
+            {navLinks.map(({ to, label, icon: Icon }) => (
+              <Link
+                key={to}
+                to={to}
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '12px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '15px',
+                  textDecoration: 'none',
+                  color: location.pathname === to ? 'var(--color-action-primary)' : 'var(--color-text-primary)',
+                  backgroundColor: location.pathname === to ? 'var(--color-action-subtle)' : 'transparent',
+                }}
+              >
+                <Icon size={18} aria-hidden="true" />
+                <span>{label}</span>
+              </Link>
+            ))}
+          </nav>
+        </>
       )}
     </header>
   );

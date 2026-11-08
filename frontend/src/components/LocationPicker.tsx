@@ -5,6 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, Navigation, Compass, AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
+import { PRESET_LOCATIONS } from '../config/constants';
 
 interface LocationPickerProps {
   latitude: number;
@@ -42,14 +43,7 @@ function MapClickHandler({ onLocationSelect }: { onLocationSelect: (lat: number,
   return null;
 }
 
-const PRESET_LOCATIONS = [
-  { name: 'Dhaka Central', lat: 23.8103, lng: 90.4125 },
-  { name: 'Dhanmondi', lat: 23.7465, lng: 90.376 },
-  { name: 'Gulshan 2', lat: 23.7925, lng: 90.4178 },
-  { name: 'Uttara', lat: 23.8759, lng: 90.3795 },
-  { name: 'Chattogram', lat: 22.3569, lng: 91.7832 },
-  { name: 'Sylhet', lat: 24.8949, lng: 91.8687 },
-];
+
 
 export const LocationPicker: React.FC<LocationPickerProps> = ({
   latitude,

@@ -20,6 +20,8 @@ import {
 } from '../../services/pharmacyService';
 import { LocationPicker } from '../../components/LocationPicker';
 import { OpeningHoursBuilder } from '../../components/OpeningHoursBuilder';
+import { MapView } from '../../components/MapView';
+import { DEFAULT_LATITUDE, DEFAULT_LONGITUDE } from '../../config/constants';
 import {
   Building2,
   MapPin,
@@ -72,8 +74,8 @@ export const PharmacyProfilePage: React.FC = () => {
   const [city, setCity] = useState<string>('Dhaka');
   const [postalCode, setPostalCode] = useState<string>('');
 
-  const [latitude, setLatitude] = useState<number>(23.8103);
-  const [longitude, setLongitude] = useState<number>(90.4125);
+  const [latitude, setLatitude] = useState<number>(DEFAULT_LATITUDE);
+  const [longitude, setLongitude] = useState<number>(DEFAULT_LONGITUDE);
 
   const [weeklyHours, setWeeklyHours] = useState<WeeklyHours>(() => createDefaultWeeklyHours());
 
@@ -82,6 +84,7 @@ export const PharmacyProfilePage: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [showDiscardModal, setShowDiscardModal] = useState<boolean>(false);
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Populate form fields from server profile
@@ -174,8 +177,8 @@ export const PharmacyProfilePage: React.FC = () => {
       area !== (serverProfile.area || '') ||
       city !== (serverProfile.city || 'Dhaka') ||
       postalCode !== (serverProfile.postalCode || '') ||
-      latitude !== (serverProfile.latitude ?? serverProfile.location?.coordinates[1] ?? 23.8103) ||
-      longitude !== (serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? 90.4125)
+      latitude !== (serverProfile.latitude ?? serverProfile.location?.coordinates[1] ?? DEFAULT_LATITUDE) ||
+      longitude !== (serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? DEFAULT_LONGITUDE)
     );
   }, [
     serverProfile,
@@ -268,12 +271,13 @@ export const PharmacyProfilePage: React.FC = () => {
 
   const handleCancelEdit = () => {
     if (isDirty) {
-      const confirmDiscard = window.confirm(
-        'You have unsaved changes in your pharmacy profile. Discard changes and revert to saved server information?'
-      );
-      if (!confirmDiscard) return;
+      setShowDiscardModal(true);
+      return;
     }
+    executeDiscard();
+  };
 
+  const executeDiscard = () => {
     if (serverProfile) {
       populateFields(serverProfile);
     }
@@ -281,6 +285,7 @@ export const PharmacyProfilePage: React.FC = () => {
     setSaveError(null);
     setIsEditing(false);
     setSearchParams({});
+    setShowDiscardModal(false);
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -805,12 +810,16 @@ export const PharmacyProfilePage: React.FC = () => {
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Phone size={15} color="var(--color-action-primary)" aria-hidden="true" />
-                    <a
-                      href={`tel:${serverProfile.phone}`}
-                      style={{ fontSize: '15px', color: 'var(--color-action-primary)', textDecoration: 'none', fontWeight: 500 }}
-                    >
-                      {serverProfile.phone}
-                    </a>
+                    {serverProfile.phone ? (
+                      <a
+                        href={`tel:${serverProfile.phone}`}
+                        style={{ fontSize: '15px', color: 'var(--color-action-primary)', textDecoration: 'none', fontWeight: 500 }}
+                      >
+                        {serverProfile.phone}
+                      </a>
+                    ) : (
+                      <span style={{ fontSize: '15px', color: 'var(--color-text-secondary)' }}>Not specified</span>
+                    )}
                   </div>
                 </div>
 
@@ -820,12 +829,16 @@ export const PharmacyProfilePage: React.FC = () => {
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Mail size={15} color="var(--color-action-primary)" aria-hidden="true" />
-                    <a
-                      href={`mailto:${serverProfile.email}`}
-                      style={{ fontSize: '15px', color: 'var(--color-action-primary)', textDecoration: 'none' }}
-                    >
-                      {serverProfile.email || 'Not specified'}
-                    </a>
+                    {serverProfile.email ? (
+                      <a
+                        href={`mailto:${serverProfile.email}`}
+                        style={{ fontSize: '15px', color: 'var(--color-action-primary)', textDecoration: 'none' }}
+                      >
+                        {serverProfile.email}
+                      </a>
+                    ) : (
+                      <span style={{ fontSize: '15px', color: 'var(--color-text-secondary)' }}>Not specified</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1333,6 +1346,26 @@ export const PharmacyProfilePage: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Inline map pin preview (resolves UI-03) */}
+                <div style={{ marginBottom: '14px' }}>
+                  <MapView
+                    centerLatitude={serverProfile.latitude ?? serverProfile.location?.coordinates[1] ?? DEFAULT_LATITUDE}
+                    centerLongitude={serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? DEFAULT_LONGITUDE}
+                    markers={[
+                      {
+                        id: serverProfile._id,
+                        name: serverProfile.name,
+                        latitude: serverProfile.latitude ?? serverProfile.location?.coordinates[1] ?? DEFAULT_LATITUDE,
+                        longitude: serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? DEFAULT_LONGITUDE,
+                        address: serverProfile.address,
+                      },
+                    ]}
+                    zoom={15}
+                    height="200px"
+                    interactive={false}
+                  />
+                </div>
+
                 <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.5 }}>
                   Exact coordinates enable nearby patients to calculate walking and driving distances and locate your
                   dispensary counter directly from the MediFind map.
@@ -1699,6 +1732,84 @@ export const PharmacyProfilePage: React.FC = () => {
           )}
         </div>
       </form>
+
+      {/* Accessible In-App Discard Confirmation Modal (resolves UI-04) */}
+      {showDiscardModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="discard-modal-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(23, 43, 58, 0.45)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 200,
+            padding: '16px',
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              backgroundColor: 'var(--color-surface-panel)',
+              borderRadius: 'var(--radius-xl)',
+              maxWidth: '440px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: 'var(--shadow-lg)',
+              border: '1px solid var(--color-border-default)',
+            }}
+          >
+            <h3
+              id="discard-modal-title"
+              style={{ fontSize: '18px', fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 8px' }}
+            >
+              Discard Unsaved Changes?
+            </h3>
+            <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: '0 0 20px' }}>
+              You have modified your pharmacy profile. If you discard, all unsaved changes will revert back to your
+              current saved server record.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setShowDiscardModal(false)}
+                className="btn-secondary"
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  border: '1px solid var(--color-border-default)',
+                  backgroundColor: 'var(--color-surface-panel)',
+                  cursor: 'pointer',
+                }}
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={executeDiscard}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  backgroundColor: 'var(--color-status-problem)',
+                  color: '#ffffff',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                Discard Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

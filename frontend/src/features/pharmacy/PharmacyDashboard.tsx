@@ -27,7 +27,10 @@ import {
   Edit3,
   Sparkles,
   Sliders,
+  Copy,
+  Check,
 } from 'lucide-react';
+import { OneTapStockControl } from './OneTapStockControl';
 
 export const PharmacyDashboard: React.FC = () => {
   const [application, setApplication] = useState<PharmacyApplicationResponse | null>(null);
@@ -35,6 +38,14 @@ export const PharmacyDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedEmail, setCopiedEmail] = useState<boolean>(false);
+
+  const handleCopyEmail = () => {
+    navigator.clipboard.writeText('compliance@medifind.dev').then(() => {
+      setCopiedEmail(true);
+      setTimeout(() => setCopiedEmail(false), 2000);
+    });
+  };
 
   const fetchStatus = async (showRefreshingIndicator = false) => {
     if (showRefreshingIndicator) setIsRefreshing(true);
@@ -804,26 +815,50 @@ export const PharmacyDashboard: React.FC = () => {
                 </span>
               </div>
 
-              <a
-                href="mailto:compliance@medifind.dev?subject=Pharmacy%20Suspension%20Review%20Request"
-                className="btn-secondary"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '10px 18px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border-default)',
-                  backgroundColor: 'var(--color-surface-panel)',
-                  color: 'var(--color-text-primary)',
-                  textDecoration: 'none',
-                }}
-              >
-                <Mail size={16} aria-hidden="true" />
-                <span>Contact Compliance Desk</span>
-              </a>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <a
+                  href="mailto:compliance@medifind.dev?subject=Pharmacy%20Suspension%20Review%20Request"
+                  className="btn-secondary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 18px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--color-border-default)',
+                    backgroundColor: 'var(--color-surface-panel)',
+                    color: 'var(--color-text-primary)',
+                    textDecoration: 'none',
+                  }}
+                >
+                  <Mail size={16} aria-hidden="true" />
+                  <span>Contact Compliance Desk</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={handleCopyEmail}
+                  className="btn-secondary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '10px 14px',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--color-border-default)',
+                    backgroundColor: 'var(--color-surface-panel)',
+                    color: 'var(--color-text-secondary)',
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Copy compliance email address to clipboard"
+                >
+                  {copiedEmail ? <Check size={15} color="var(--color-status-available)" /> : <Copy size={15} />}
+                  <span>{copiedEmail ? 'Copied to Clipboard' : 'Copy compliance@medifind.dev'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -908,43 +943,34 @@ export const PharmacyDashboard: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div
-              style={{
-                padding: '24px',
-                backgroundColor: 'var(--color-status-available-bg)',
-                borderRadius: 'var(--radius-lg)',
-                border: '1px solid rgba(24, 115, 75, 0.2)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '16px',
-              }}
-            >
-              <div>
-                <strong style={{ fontSize: '15px', color: 'var(--color-status-available)', display: 'block', marginBottom: '4px' }}>
-                  ✓ Inventory Operations Unlocked
-                </strong>
-                <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: 0 }}>
-                  You are authorized to report availability and manage medicine listings.
-                </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div
+                style={{
+                  padding: '16px 20px',
+                  backgroundColor: 'var(--color-status-available-bg)',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '1px solid rgba(24, 115, 75, 0.2)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                }}
+              >
+                <div>
+                  <strong style={{ fontSize: '15px', color: 'var(--color-status-available)', display: 'block', marginBottom: '2px' }}>
+                    ✓ Inventory Operations Unlocked
+                  </strong>
+                  <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: 0 }}>
+                    Select a status pill below for any medicine to report updated availability to patients in real-time.
+                  </p>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <span
-                  style={{
-                    fontSize: '13px',
-                    color: 'var(--color-status-available)',
-                    fontWeight: 600,
-                    padding: '8px 14px',
-                    borderRadius: 'var(--radius-md)',
-                    backgroundColor: '#ffffff',
-                    border: '1px solid rgba(24, 115, 75, 0.3)',
-                  }}
-                >
-                  Live Reporting Ready
-                </span>
-              </div>
+              {/* One-Tap Stock Control Component (resolves TECH-04 & UI-01) */}
+              <OneTapStockControl
+                pharmacyId={pharmacy?._id || application?.pharmacyId || 'ph_default'}
+              />
             </div>
           )}
         </section>

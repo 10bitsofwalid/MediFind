@@ -11,7 +11,40 @@ import type {
   VerificationStatus,
 } from '../types/pharmacy';
 
-const MOCK_STORAGE_KEY = 'medifind_mock_pharmacy_application';
+const DEFAULT_MOCK_STORAGE_KEY = 'medifind_mock_pharmacy_application';
+
+/**
+ * Derives a user-scoped mock storage key so different logged-in sessions
+ * maintain their own independent application and verification states.
+ */
+export function getMockStorageKey(): string {
+  try {
+    const rawUser = localStorage.getItem('user');
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser);
+      if (parsed && typeof parsed.id === 'string' && parsed.id.trim()) {
+        return `medifind_mock_pharmacy_application_${parsed.id.trim()}`;
+      }
+    }
+  } catch {
+    // Fallback if parsing fails
+  }
+  return DEFAULT_MOCK_STORAGE_KEY;
+}
+
+/**
+ * Retrieves the stored mock application, checking user-scoped key first,
+ * with fallback to the legacy global key for seamless data continuity.
+ */
+function getStoredMockApplication(): string | null {
+  const userKey = getMockStorageKey();
+  const userData = localStorage.getItem(userKey);
+  if (userData) return userData;
+  if (userKey !== DEFAULT_MOCK_STORAGE_KEY) {
+    return localStorage.getItem(DEFAULT_MOCK_STORAGE_KEY);
+  }
+  return null;
+}
 
 export class PharmacyServiceError extends Error {
   code?: string;
@@ -222,7 +255,7 @@ export async function submitPharmacyApplication(
     };
 
     // Store in mock storage for verification tracking
-    localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(applicationResponse));
+    localStorage.setItem(getMockStorageKey(), JSON.stringify(applicationResponse));
 
     return applicationResponse;
   }
@@ -258,7 +291,7 @@ export async function submitPharmacyApplication(
  */
 export async function getPharmacyApplication(): Promise<PharmacyApplicationResponse | null> {
   if (isMockApiEnabled()) {
-    const saved = localStorage.getItem(MOCK_STORAGE_KEY);
+    const saved = getStoredMockApplication();
     if (!saved) return null;
     try {
       const parsed = JSON.parse(saved);
@@ -440,7 +473,7 @@ export async function updatePharmacyProfile(
     // Development Mock Adapter: simulates server latency & authoritative persistence
     await new Promise((resolve) => setTimeout(resolve, 600));
 
-    const savedRaw = localStorage.getItem(MOCK_STORAGE_KEY);
+    const savedRaw = getStoredMockApplication();
     let app: PharmacyApplicationResponse;
 
     if (savedRaw) {
@@ -483,7 +516,7 @@ export async function updatePharmacyProfile(
     };
 
     app.data = updatedData;
-    localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(app));
+    localStorage.setItem(getMockStorageKey(), JSON.stringify(app));
 
     const updatedProfile: Pharmacy = {
       _id: app.pharmacyId || 'ph_mock_1',
@@ -591,7 +624,7 @@ export function setMockVerificationStatus(
   decisionReason?: string,
   nextStep?: string
 ): PharmacyApplicationResponse | null {
-  const saved = localStorage.getItem(MOCK_STORAGE_KEY);
+  const saved = getStoredMockApplication();
   let app: PharmacyApplicationResponse;
 
   if (saved) {
@@ -609,7 +642,7 @@ export function setMockVerificationStatus(
   app.decisionReason = decisionReason;
   app.nextStep = nextStep;
 
-  localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(app));
+  localStorage.setItem(getMockStorageKey(), JSON.stringify(app));
   return app;
 }
 
@@ -668,7 +701,7 @@ export function seedSamplePharmacy(
     nextStep,
   };
 
-  localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(sampleApp));
+  localStorage.setItem(getMockStorageKey(), JSON.stringify(sampleApp));
   return sampleApp;
 }
 
@@ -676,5 +709,6 @@ export function seedSamplePharmacy(
  * Clears mock application storage (for testing purposes).
  */
 export function clearMockApplication(): void {
-  localStorage.removeItem(MOCK_STORAGE_KEY);
+  localStorage.removeItem(getMockStorageKey());
+  localStorage.removeItem(DEFAULT_MOCK_STORAGE_KEY);
 }
