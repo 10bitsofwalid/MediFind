@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../app/useAuth';
 import type { Role } from '../types/pharmacy';
 import { PlusCircle, LayoutDashboard, Building2, UserCheck, Menu, X, LogIn } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
@@ -66,9 +67,7 @@ export const Navbar: React.FC = () => {
           }}
           aria-label="MediFind Pharmacy Operations Home"
         >
-          <div className="brand-logo-icon" aria-hidden="true">
-            M
-          </div>
+          <BrandLogo size={36} />
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <span style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
               MediFind

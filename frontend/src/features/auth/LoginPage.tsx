@@ -9,6 +9,7 @@ import {
   AlertCircle,
   ArrowRight,
 } from 'lucide-react';
+import { BrandLogo } from '../../components/BrandLogo';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -74,25 +75,7 @@ export const LoginPage: React.FC = () => {
       >
         {/* Brand Icon & Heading */}
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <div
-            style={{
-              width: '52px',
-              height: '52px',
-              borderRadius: 'var(--radius-md)',
-              backgroundColor: 'var(--color-action-primary)',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              fontSize: '24px',
-              margin: '0 auto 14px',
-              boxShadow: 'var(--shadow-sm)',
-            }}
-            aria-hidden="true"
-          >
-            M
-          </div>
+          <BrandLogo size={52} style={{ margin: '0 auto 14px' }} />
           <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 6px' }}>
             Sign in to MediFind
           </h1>

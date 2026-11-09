@@ -4,7 +4,7 @@
   /* Core Color Tokens */
   --color-text-primary: #172B3A;
   --color-text-secondary: #526575;
-  --color-surface-canvas: #F6F8FA;
+  --color-surface-canvas: #FFFFFF;
   --color-surface-panel: #FFFFFF;
   --color-border-default: #D8E1E8;
   --color-border-focus: #166B9A;
@@ -47,28 +47,26 @@
   --space-8: 32px;
 }
 
-/* Semantic Dark Appearance Palette (resolves UI-08) */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-surface-canvas: #0F1720;
-    --color-surface-panel: #172430;
-    --color-text-primary: #F0F4F8;
-    --color-text-secondary: #94A3B8;
-    --color-border-default: #2A3C4D;
-    --color-border-focus: #38BDF8;
-    --color-action-primary: #1F8FA8;
-    --color-action-hover: #176B87;
-    --color-action-subtle: #162C38;
-    --color-status-available: #34D399;
-    --color-status-available-bg: #064E3B;
-    --color-status-caution: #FBBF24;
-    --color-status-caution-bg: #451A03;
-    --color-status-problem: #F87171;
-    --color-status-problem-bg: #450A0A;
-    --color-status-neutral: #94A3B8;
-    --color-status-neutral-bg: #1E293B;
-    --color-focus: #38BDF8;
-  }
+/* Opt-in Dark Appearance Palette (requires explicit .theme-dark class) */
+.theme-dark {
+  --color-surface-canvas: #0F1720;
+  --color-surface-panel: #172430;
+  --color-text-primary: #F0F4F8;
+  --color-text-secondary: #94A3B8;
+  --color-border-default: #2A3C4D;
+  --color-border-focus: #38BDF8;
+  --color-action-primary: #1F8FA8;
+  --color-action-hover: #176B87;
+  --color-action-subtle: #162C38;
+  --color-status-available: #34D399;
+  --color-status-available-bg: #064E3B;
+  --color-status-caution: #FBBF24;
+  --color-status-caution-bg: #451A03;
+  --color-status-problem: #F87171;
+  --color-status-problem-bg: #450A0A;
+  --color-status-neutral: #94A3B8;
+  --color-status-neutral-bg: #1E293B;
+  --color-focus: #38BDF8;
 }
 
 *, *::before, *::after {
