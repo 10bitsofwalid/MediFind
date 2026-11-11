@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../app/useAuth';
 import type { Role } from '../types/pharmacy';
-import { PlusCircle, LayoutDashboard, Building2, UserCheck, Menu, X, LogIn } from 'lucide-react';
+import { PlusCircle, LayoutDashboard, Building2, UserCheck, Menu, X, LogIn, Search, UserPlus } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 
 export const Navbar: React.FC = () => {
@@ -13,10 +13,12 @@ export const Navbar: React.FC = () => {
 
   // Dynamic role-aware navigation links (resolves UI-02)
   const navLinks = useMemo(() => {
-    if (user?.role === 'CUSTOMER') {
+    if (user?.role === 'CUSTOMER' || !user) {
       return [
-        { to: '/login', label: 'Account / Sign In', icon: LogIn },
-        { to: '/pharmacy/register', label: 'Register Pharmacy', icon: PlusCircle },
+        { to: '/', label: 'Find medicine', icon: Search },
+        { to: '/login', label: 'Sign in', icon: LogIn },
+        { to: '/register', label: 'Create account', icon: UserPlus },
+        { to: '/pharmacy/register', label: 'For pharmacies', icon: Building2 },
       ];
     }
     if (user?.role === 'ADMIN') {
@@ -31,7 +33,7 @@ export const Navbar: React.FC = () => {
       { to: '/pharmacy/profile', label: 'Pharmacy Profile', icon: Building2 },
       { to: '/pharmacy/register', label: 'Onboarding Application', icon: PlusCircle },
     ];
-  }, [user?.role]);
+  }, [user]);
 
   return (
     <header
@@ -57,7 +59,7 @@ export const Navbar: React.FC = () => {
       >
         {/* Brand Logo & Title */}
         <Link
-          to="/pharmacy/register"
+          to={user?.role === 'CUSTOMER' || !user ? '/' : '/pharmacy/dashboard'}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -65,7 +67,7 @@ export const Navbar: React.FC = () => {
             textDecoration: 'none',
             color: 'var(--color-text-primary)',
           }}
-          aria-label="MediFind Pharmacy Operations Home"
+          aria-label={user?.role === 'CUSTOMER' || !user ? 'MediFind Home' : 'MediFind Pharmacy Operations Home'}
         >
           <BrandLogo size={36} />
           <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -73,7 +75,7 @@ export const Navbar: React.FC = () => {
               MediFind
             </span>
             <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
-              Pharmacy Operations
+              {user?.role === 'CUSTOMER' || !user ? 'Find care with confidence' : 'Pharmacy Operations'}
             </span>
           </div>
         </Link>

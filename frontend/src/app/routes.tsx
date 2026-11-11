@@ -19,6 +19,15 @@ const LoginPage = lazy(() =>
 const RegisterPage = lazy(() =>
   import('../features/auth/RegisterPage').then((m) => ({ default: m.RegisterPage }))
 );
+const HomePage = lazy(() =>
+  import('../features/customer/HomePage').then((m) => ({ default: m.HomePage }))
+);
+const SearchResults = lazy(() =>
+  import('../features/customer/SearchResults').then((m) => ({ default: m.SearchResults }))
+);
+const MedicineDetailPage = lazy(() =>
+  import('../features/customer/MedicineDetailPage').then((m) => ({ default: m.MedicineDetailPage }))
+);
 
 const RouteLoading: React.FC = () => (
   <div
@@ -42,8 +51,11 @@ export const AppRoutes: React.FC = () => {
   return (
     <Suspense fallback={<RouteLoading />}>
       <Routes>
-        {/* Root redirect to pharmacy onboarding */}
-        <Route path="/" element={<Navigate to="/pharmacy/register" replace />} />
+        {/* Public Customer Discovery Routes (Developer 1) */}
+        <Route path="/" element={<HomePage />} />
+        <Route path="/search" element={<SearchResults />} />
+        <Route path="/medicine" element={<MedicineDetailPage />} />
+        <Route path="/medicine/:id" element={<MedicineDetailPage />} />
 
         {/* Authentication Routes (resolves TECH-02 & TECH-03) */}
         <Route path="/login" element={<LoginPage />} />
@@ -75,7 +87,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="/pharmacy/status" element={<Navigate to="/pharmacy/dashboard" replace />} />
 
         {/* Catch-all route */}
-        <Route path="*" element={<Navigate to="/pharmacy/register" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   );
