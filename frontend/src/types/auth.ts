@@ -21,5 +21,14 @@ export interface AuthState {
 export interface LoginCredentials {
   email: string;
   password?: string;
+  expectedRole?: Role;
+}
+
+export interface RegisterPayload {
+  name: string;
+  email: string;
+  phone?: string;
+  password: string;
+  role: Role;
 }
 

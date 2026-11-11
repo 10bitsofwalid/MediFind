@@ -2,6 +2,7 @@
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './AuthProvider';
 import { Navbar } from '../components/Navbar';
+import { WelcomeRoleModal } from '../components/WelcomeRoleModal';
 import { AppRoutes } from './routes';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import '../index.css';
@@ -23,6 +24,9 @@ export function App() {
           >
             {/* Global Header */}
             <Navbar />
+
+            {/* Welcome User-Type Selection Modal */}
+            <WelcomeRoleModal />
 
             {/* Main Application Content */}
             <main style={{ flex: 1 }}>

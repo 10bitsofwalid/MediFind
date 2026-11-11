@@ -52,6 +52,22 @@ export const MobileResultsPreview: React.FC<MobileResultsPreviewProps> = ({
         </span>
       </div>
 
+      {results.length === 0 ? (
+        <div
+          className="card"
+          style={{
+            backgroundColor: 'var(--color-surface-panel)',
+            border: '1px dashed var(--color-border-default)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '20px',
+            textAlign: 'center',
+            color: 'var(--color-text-secondary)',
+            fontSize: '13px',
+          }}
+        >
+          No nearby pharmacy availability reported yet.
+        </div>
+      ) : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {results.map((item) => (
           <article
@@ -69,26 +85,6 @@ export const MobileResultsPreview: React.FC<MobileResultsPreviewProps> = ({
               boxShadow: 'var(--shadow-sm)',
             }}
           >
-            {item.isDemoData && (
-              <span
-                style={{
-                  position: 'absolute',
-                  top: '10px',
-                  right: '12px',
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  color: 'var(--color-text-muted)',
-                  backgroundColor: 'var(--color-surface-canvas)',
-                  padding: '1px 6px',
-                  borderRadius: 'var(--radius-full)',
-                  border: '1px solid var(--color-border-default)',
-                }}
-              >
-                Demo Data
-              </span>
-            )}
-
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
@@ -196,6 +192,7 @@ export const MobileResultsPreview: React.FC<MobileResultsPreviewProps> = ({
           </article>
         ))}
       </div>
+      )}
 
       <div
         role="note"

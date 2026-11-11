@@ -1,38 +1,98 @@
 // src/app/AuthProvider.tsx
 import React, { useState, type ReactNode } from 'react';
 import type { Role } from '../types/pharmacy';
-import type { User } from '../types/auth';
+import type { User, RegisterPayload } from '../types/auth';
 import { authService } from '../services/authService';
 import { AuthContext } from './AuthContext';
 
+const USER_TYPE_STORAGE_KEY = 'medifind_selected_user_type';
+
+function getStoredUserType(currentUser: User | null): Role | null {
+  if (currentUser?.role) {
+    sessionStorage.setItem(USER_TYPE_STORAGE_KEY, currentUser.role);
+    return currentUser.role;
+  }
+  try {
+    const saved = sessionStorage.getItem(USER_TYPE_STORAGE_KEY);
+    if (saved === 'CUSTOMER' || saved === 'PHARMACY' || saved === 'ADMIN') {
+      return saved;
+    }
+  } catch {
+    // sessionStorage unavailable
+  }
+  return null;
+}
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => {
-    const savedUser = authService.getCurrentUser();
-    if (savedUser) return savedUser;
-    const defaultOwner: User = {
-      id: 'usr_pharmacy_owner_1',
-      name: 'Rahman Medical Store Owner',
-      email: 'owner@medifind.com',
-      phone: '+8801712345678',
-      role: 'PHARMACY',
-      status: 'active',
-    };
-    authService.setDevUser(defaultOwner);
-    return defaultOwner;
+  const [user, setUser] = useState<User | null>(() => authService.getCurrentUser());
+  const [token, setToken] = useState<string | null>(() => authService.getToken());
+  const [selectedUserType, setSelectedUserType] = useState<Role | null>(() =>
+    getStoredUserType(authService.getCurrentUser())
+  );
+  const [isWelcomeOpen, setIsWelcomeOpen] = useState<boolean>(() => {
+    const current = authService.getCurrentUser();
+    return !current && !getStoredUserType(current);
   });
-
-  const [token, setToken] = useState<string | null>(() => {
-    return authService.getToken() || 'mock_owner_jwt_token';
-  });
-
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const login = async (email: string) => {
+  const selectUserType = (role: Role) => {
+    if (user && user.role !== role) {
+      authService.logout();
+      setUser(null);
+      setToken(null);
+    }
+    setSelectedUserType(role);
+    try {
+      sessionStorage.setItem(USER_TYPE_STORAGE_KEY, role);
+    } catch {
+      // ignore storage failure
+    }
+    setIsWelcomeOpen(false);
+  };
+
+  const openWelcomeModal = () => {
+    setIsWelcomeOpen(true);
+  };
+
+  const closeWelcomeModal = () => {
+    if (selectedUserType || user) {
+      setIsWelcomeOpen(false);
+    }
+  };
+
+  const login = async (email: string, password?: string, expectedRole?: Role): Promise<User> => {
     setIsLoading(true);
     try {
-      const res = await authService.login({ email });
+      const res = await authService.login({ email, password, expectedRole });
       setUser(res.user);
       setToken(res.token);
+      setSelectedUserType(res.user.role);
+      try {
+        sessionStorage.setItem(USER_TYPE_STORAGE_KEY, res.user.role);
+      } catch {
+        // ignore storage failure
+      }
+      setIsWelcomeOpen(false);
+      return res.user;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const register = async (payload: RegisterPayload): Promise<User> => {
+    setIsLoading(true);
+    try {
+      const res = await authService.register(payload);
+      setUser(res.user);
+      setToken(res.token);
+      setSelectedUserType(res.user.role);
+      try {
+        sessionStorage.setItem(USER_TYPE_STORAGE_KEY, res.user.role);
+      } catch {
+        // ignore storage failure
+      }
+      setIsWelcomeOpen(false);
+      return res.user;
     } finally {
       setIsLoading(false);
     }
@@ -45,20 +105,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const switchRole = (newRole: Role) => {
+    if (!user) return;
     const updatedUser: User = {
-      id: user?.id || 'usr_dev',
-      name:
-        newRole === 'PHARMACY'
-          ? 'Pharmacy Owner'
-          : newRole === 'ADMIN'
-          ? 'System Administrator'
-          : 'Registered Customer',
-      email: user?.email || 'user@medifind.com',
+      ...user,
       role: newRole,
-      status: 'active',
     };
     setUser(updatedUser);
     authService.setDevUser(updatedUser);
+    setSelectedUserType(newRole);
+    try {
+      sessionStorage.setItem(USER_TYPE_STORAGE_KEY, newRole);
+    } catch {
+      // ignore storage failure
+    }
   };
 
   return (
@@ -68,7 +127,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         token,
         isAuthenticated: !!user && !!token,
         isLoading,
+        selectedUserType,
+        isWelcomeOpen,
+        selectUserType,
+        openWelcomeModal,
+        closeWelcomeModal,
         login,
+        register,
         logout,
         switchRole,
       }}

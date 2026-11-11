@@ -98,7 +98,7 @@ export const PharmacyRegisterPage: React.FC = () => {
   const [email, setEmail] = useState<string>(() => initialDraft?.email || '');
 
   const [streetAddress, setStreetAddress] = useState<string>(() => initialDraft?.streetAddress || '');
-  const [city, setCity] = useState<string>(() => initialDraft?.city || 'Dhaka');
+  const [city, setCity] = useState<string>(() => initialDraft?.city || '');
   const [area, setArea] = useState<string>(() => initialDraft?.area || '');
   const [postalCode, setPostalCode] = useState<string>(() => initialDraft?.postalCode || '');
 
@@ -107,7 +107,7 @@ export const PharmacyRegisterPage: React.FC = () => {
 
   const [licenseNo, setLicenseNo] = useState<string>(() => initialDraft?.licenseNo || '');
   const [issuingAuthority, setIssuingAuthority] = useState<string>(
-    () => initialDraft?.issuingAuthority || 'Directorate General of Drug Administration (DGDA)'
+    () => initialDraft?.issuingAuthority || ''
   );
   const [licenseExpiryDate, setLicenseExpiryDate] = useState<string>(() => initialDraft?.licenseExpiryDate || '');
   const [licenseType, setLicenseType] = useState<string>(() => initialDraft?.licenseType || 'Retail Pharmacy');
@@ -143,7 +143,7 @@ export const PharmacyRegisterPage: React.FC = () => {
           setPhone(d.phone || '');
           setEmail(d.email || '');
           setStreetAddress(d.streetAddress || '');
-          setCity(d.city || 'Dhaka');
+          setCity(d.city || '');
           setArea(d.area || '');
           setPostalCode(d.postalCode || '');
           if (d.latitude) setLatitude(d.latitude);
@@ -1597,20 +1597,31 @@ export const PharmacyRegisterPage: React.FC = () => {
                     type="text"
                     required
                     value={issuingAuthority}
-                    onChange={(e) => setIssuingAuthority(e.target.value)}
+                    onChange={(e) => {
+                      setIssuingAuthority(e.target.value);
+                      if (touched.issuingAuthority) handleBlur('issuingAuthority', e.target.value);
+                    }}
+                    onBlur={(e) => handleBlur('issuingAuthority', e.target.value)}
+                    placeholder="e.g. Directorate General of Drug Administration (DGDA)"
+                    aria-invalid={!!errors.issuingAuthority}
                     className="form-input"
                     style={{
                       width: '100%',
                       padding: '12px 14px',
                       fontSize: '15px',
                       borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--color-border-default)',
+                      border: errors.issuingAuthority ? '1px solid var(--color-status-problem)' : '1px solid var(--color-border-default)',
                       backgroundColor: 'var(--color-surface-panel)',
                       color: 'var(--color-text-primary)',
                       boxSizing: 'border-box',
                       minHeight: '44px',
                     }}
                   />
+                  {errors.issuingAuthority && (
+                    <span role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <AlertCircle size={14} aria-hidden="true" /> {errors.issuingAuthority}
+                    </span>
+                  )}
                 </div>
 
                 <div>

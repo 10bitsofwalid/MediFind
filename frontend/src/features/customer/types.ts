@@ -36,7 +36,6 @@ export interface NearbyPharmacyResult {
   genericName: string;
   strength: string;
   form: string;
-  isDemoData?: boolean; // Flag to label seeded/demo data honestly
 }
 
 export interface MedicineSuggestion {

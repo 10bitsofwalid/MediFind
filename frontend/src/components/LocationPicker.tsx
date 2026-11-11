@@ -5,7 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, Navigation, Compass, AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
-import { PRESET_LOCATIONS } from '../config/constants';
+import { DEFAULT_LATITUDE, DEFAULT_LONGITUDE, PRESET_LOCATIONS } from '../config/constants';
 
 interface LocationPickerProps {
   latitude: number;
@@ -96,8 +96,8 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
   const isValidLng = !isNaN(longitude) && longitude >= -180 && longitude <= 180;
   const mapCenter: [number, number] = useMemo(() => {
     return [
-      isValidLat ? latitude : 23.8103,
-      isValidLng ? longitude : 90.4125,
+      isValidLat ? latitude : DEFAULT_LATITUDE,
+      isValidLng ? longitude : DEFAULT_LONGITUDE,
     ];
   }, [isValidLat, isValidLng, latitude, longitude]);
 

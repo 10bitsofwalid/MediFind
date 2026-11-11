@@ -2,27 +2,44 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../app/useAuth';
-import type { Role } from '../../types/pharmacy';
+import { isMockApiEnabled } from '../../services/pharmacyService';
 import {
   Lock,
   Mail,
   AlertCircle,
   ArrowRight,
+  Info,
+  RefreshCw,
 } from 'lucide-react';
 import { BrandLogo } from '../../components/BrandLogo';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login, switchRole } = useAuth();
+  const { login, selectedUserType, openWelcomeModal } = useAuth();
 
   const isSessionExpired = searchParams.get('reason') === 'session_expired';
 
-  const [email, setEmail] = useState<string>('owner@medifind.com');
-  const [password, setPassword] = useState<string>('••••••••');
-  const [selectedRole, setSelectedRole] = useState<Role>('PHARMACY');
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const portalTitle =
+    selectedUserType === 'PHARMACY'
+      ? 'Pharmacy Owner Sign In'
+      : selectedUserType === 'ADMIN'
+      ? 'Administrator Sign In'
+      : selectedUserType === 'CUSTOMER'
+      ? 'Customer Sign In'
+      : 'Sign in to MediFind';
+
+  const portalSubtitle =
+    selectedUserType === 'PHARMACY'
+      ? 'Sign in to manage your pharmacy application, profile, and stock reports'
+      : selectedUserType === 'ADMIN'
+      ? 'Sign in to review pharmacy licenses and maintain the medicine catalogue'
+      : 'Enter your credentials to access your MediFind account';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,25 +57,30 @@ export const LoginPage: React.FC = () => {
       return;
     }
 
+    if (!password) {
+      setErrorMessage('Please enter your password.');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      await login(emailTrimmed);
-      switchRole(selectedRole);
-      if (selectedRole === 'PHARMACY') {
+      const signedInUser = await login(emailTrimmed, password, selectedUserType || undefined);
+      if (signedInUser.role === 'PHARMACY') {
         navigate('/pharmacy/dashboard');
+      } else if (signedInUser.role === 'ADMIN') {
+        navigate('/admin/dashboard');
       } else {
-        navigate('/pharmacy/dashboard');
+        navigate('/');
       }
-    } catch {
-      setErrorMessage('Authentication failed. Please verify your credentials and try again.');
+    } catch (err: unknown) {
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : 'Authentication failed. Please verify your credentials and try again.'
+      );
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleQuickDemoRole = (role: Role, demoEmail: string) => {
-    setSelectedRole(role);
-    setEmail(demoEmail);
   };
 
   return (
@@ -77,12 +99,38 @@ export const LoginPage: React.FC = () => {
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <BrandLogo size={52} style={{ margin: '0 auto 14px' }} />
           <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 6px' }}>
-            Sign in to MediFind
+            {portalTitle}
           </h1>
           <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)', margin: 0 }}>
-            Enter your credentials to access your healthcare workspace
+            {portalSubtitle}
           </p>
         </div>
+
+        {/* Mock Mode Admin Entry Info */}
+        {selectedUserType === 'ADMIN' && isMockApiEnabled() && (
+          <div
+            role="note"
+            style={{
+              padding: '12px 14px',
+              backgroundColor: 'var(--color-action-subtle)',
+              border: '1px solid rgba(23, 107, 135, 0.25)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--color-action-primary)',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '8px',
+              marginBottom: '20px',
+              lineHeight: 1.45,
+            }}
+          >
+            <Info size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: '2px' }} />
+            <span>
+              <strong>Mock Mode Active:</strong> Enter any valid administrator email and password to open the local
+              Administrator workspace while the backend API is offline.
+            </span>
+          </div>
+        )}
 
         {/* Session Expired Notice if arrived via 401 redirect */}
         {isSessionExpired && (
@@ -131,40 +179,6 @@ export const LoginPage: React.FC = () => {
         {/* Login Form */}
         <form onSubmit={handleSubmit} noValidate>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-            {/* Account Role Selector */}
-            <div>
-              <label
-                htmlFor="login-role"
-                style={{
-                  display: 'block',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  color: 'var(--color-text-primary)',
-                  marginBottom: '6px',
-                }}
-              >
-                Account Workspace Role
-              </label>
-              <select
-                id="login-role"
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value as Role)}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border-default)',
-                  backgroundColor: 'var(--color-surface-panel)',
-                  color: 'var(--color-text-primary)',
-                  fontSize: '14px',
-                }}
-              >
-                <option value="PHARMACY">Pharmacy Owner / Staff</option>
-                <option value="CUSTOMER">Customer / Patient</option>
-                <option value="ADMIN">System Administrator</option>
-              </select>
-            </div>
-
             {/* Email Field */}
             <div>
               <label
@@ -208,21 +222,18 @@ export const LoginPage: React.FC = () => {
 
             {/* Password Field */}
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label
-                  htmlFor="login-password"
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    color: 'var(--color-text-primary)',
-                  }}
-                >
-                  Password
-                </label>
-                <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                  Demo: any password
-                </span>
-              </div>
+              <label
+                htmlFor="login-password"
+                style={{
+                  display: 'block',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: 'var(--color-text-primary)',
+                  marginBottom: '6px',
+                }}
+              >
+                Password
+              </label>
               <div style={{ position: 'relative' }}>
                 <Lock
                   size={16}
@@ -235,6 +246,7 @@ export const LoginPage: React.FC = () => {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
                   disabled={isLoading}
                   style={{
                     width: '100%',
@@ -283,66 +295,47 @@ export const LoginPage: React.FC = () => {
           </div>
         </form>
 
-        {/* Quick Demo Fast-Logins */}
-        <div style={{ marginTop: '24px', paddingTop: '18px', borderTop: '1px solid var(--color-border-default)' }}>
-          <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', display: 'block', marginBottom: '8px' }}>
-            Quick Demo Persona Accounts:
-          </span>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={() => handleQuickDemoRole('PHARMACY', 'owner@medifind.com')}
-              className="btn-secondary"
-              style={{
-                fontSize: '12px',
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-full)',
-                border: '1px solid var(--color-border-default)',
-                backgroundColor: 'var(--color-surface-canvas)',
-                cursor: 'pointer',
-              }}
-            >
-              Pharmacy Owner
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemoRole('CUSTOMER', 'patient@medifind.com')}
-              className="btn-secondary"
-              style={{
-                fontSize: '12px',
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-full)',
-                border: '1px solid var(--color-border-default)',
-                backgroundColor: 'var(--color-surface-canvas)',
-                cursor: 'pointer',
-              }}
-            >
-              Customer / Patient
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemoRole('ADMIN', 'admin@medifind.com')}
-              className="btn-secondary"
-              style={{
-                fontSize: '12px',
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-full)',
-                border: '1px solid var(--color-border-default)',
-                backgroundColor: 'var(--color-surface-canvas)',
-                cursor: 'pointer',
-              }}
-            >
-              Administrator
-            </button>
+        {/* Portal-Specific Footer Links */}
+        {selectedUserType !== 'ADMIN' && (
+          <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+            Don&apos;t have an account yet?{' '}
+            <Link to="/register" style={{ color: 'var(--color-action-primary)', fontWeight: 600, textDecoration: 'none' }}>
+              Create an Account
+            </Link>
           </div>
-        </div>
+        )}
 
-        {/* Register Links */}
-        <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-          Don't have an account yet?{' '}
-          <Link to="/register" style={{ color: 'var(--color-action-primary)', fontWeight: 600, textDecoration: 'none' }}>
-            Create an Account
-          </Link>
+        {selectedUserType === 'PHARMACY' && (
+          <div style={{ marginTop: '10px', textAlign: 'center', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+            New pharmacy?{' '}
+            <Link
+              to="/pharmacy/register"
+              style={{ color: 'var(--color-action-primary)', fontWeight: 600, textDecoration: 'none' }}
+            >
+              Start Onboarding Application
+            </Link>
+          </div>
+        )}
+
+        <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid var(--color-border-default)', textAlign: 'center' }}>
+          <button
+            type="button"
+            onClick={openWelcomeModal}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-text-secondary)',
+              fontSize: '12px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+            }}
+          >
+            <RefreshCw size={12} aria-hidden="true" />
+            <span>Switch User Type</span>
+          </button>
         </div>
       </div>
     </div>

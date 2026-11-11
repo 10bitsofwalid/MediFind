@@ -7,11 +7,14 @@ import { ArrowLeft, Search } from 'lucide-react';
 
 export const SearchResults: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const query = searchParams.get('q') || 'Paracetamol 500 mg';
-  const area = searchParams.get('area') || 'Dhanmondi, Dhaka';
+  const query = searchParams.get('q') || '';
+  const area = searchParams.get('area') || '';
 
   const handleSearch = ({ query: newQuery, area: newArea }: { query: string; area: string }) => {
-    setSearchParams({ q: newQuery, area: newArea });
+    const nextParams: Record<string, string> = {};
+    if (newQuery) nextParams.q = newQuery;
+    if (newArea) nextParams.area = newArea;
+    setSearchParams(nextParams);
   };
 
   return (
@@ -47,10 +50,12 @@ export const SearchResults: React.FC = () => {
 
       <div>
         <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 4px 0', color: 'var(--color-text-primary)' }}>
-          Nearby availability for "{query}"
+          {query ? `Nearby availability for "${query}"` : 'Search nearby medicine availability'}
         </h1>
         <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)', margin: 0 }}>
-          Results around {area} &bull; Check freshness before travelling
+          {area
+            ? `Results around ${area} • Check freshness before travelling`
+            : 'Enter a medicine name and your area or location to check nearby pharmacy stock'}
         </p>
       </div>
 
@@ -75,10 +80,10 @@ export const SearchResults: React.FC = () => {
       >
         <Search size={32} color="var(--color-action-primary)" style={{ margin: '0 auto 12px auto' }} />
         <h2 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 8px 0', color: 'var(--color-text-primary)' }}>
-          Search Results Wireframe Active
+          No Pharmacy Results Available
         </h2>
         <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', maxWidth: '480px', margin: '0 auto 16px auto' }}>
-          Database connection and full filter/sort controls will be connected in Phase 2 & 3.
+          Database connection and live availability search will display verified pharmacy stock once connected.
         </p>
         <Link to="/" className="btn-primary" style={{ display: 'inline-block', padding: '8px 16px', borderRadius: 'var(--radius-md)' }}>
           Return to Guest Discovery
@@ -87,4 +92,3 @@ export const SearchResults: React.FC = () => {
     </div>
   );
 };
-

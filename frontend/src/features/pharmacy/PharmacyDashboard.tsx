@@ -6,7 +6,6 @@ import {
   getPharmacyApplication,
   getPharmacyProfile,
   setMockVerificationStatus,
-  seedSamplePharmacy,
   isMockApiEnabled,
 } from '../../services/pharmacyService';
 import {
@@ -91,23 +90,7 @@ export const PharmacyDashboard: React.FC = () => {
   }, []);
 
   const handleSimulateStatus = (status: VerificationStatus) => {
-    let reason: string | undefined;
-    let nextStep: string | undefined;
-
-    if (status === 'rejected') {
-      reason = 'Uploaded Drug Trade License certificate expired or name does not match national registry.';
-      nextStep = 'Please upload a renewed DGDA trade certificate and correct the legal trade name in your application.';
-    } else if (status === 'suspended') {
-      reason = 'Repeated customer complaints regarding inaccurate reported stock availability under investigation.';
-      nextStep = 'Contact MediFind Compliance at compliance@medifind.dev with your audit reference number to arrange re-audit.';
-    }
-
-    setMockVerificationStatus(status, reason, nextStep);
-    fetchStatus();
-  };
-
-  const handleSeedDemo = () => {
-    seedSamplePharmacy('pending');
+    setMockVerificationStatus(status);
     fetchStatus();
   };
 
@@ -191,29 +174,6 @@ export const PharmacyDashboard: React.FC = () => {
               <span>Start Pharmacy Application</span>
               <ChevronRight size={18} aria-hidden="true" />
             </Link>
-
-            {isMockApiEnabled() && (
-              <button
-                type="button"
-                onClick={handleSeedDemo}
-                className="btn-secondary"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '12px 20px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border-default)',
-                  backgroundColor: 'var(--color-surface-panel)',
-                  color: 'var(--color-text-secondary)',
-                  cursor: 'pointer',
-                }}
-              >
-                <span>Load Sample Pharmacy (Dev Mode)</span>
-              </button>
-            )}
           </div>
         </div>
       </div>

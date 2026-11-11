@@ -474,16 +474,23 @@ export async function updatePharmacyProfile(
     await new Promise((resolve) => setTimeout(resolve, 600));
 
     const savedRaw = getStoredMockApplication();
-    let app: PharmacyApplicationResponse;
+    if (!savedRaw) {
+      throw new PharmacyServiceError(
+        'No pharmacy application found. Please submit an application first.',
+        'NOT_FOUND',
+        404
+      );
+    }
 
-    if (savedRaw) {
-      try {
-        app = JSON.parse(savedRaw);
-      } catch {
-        app = seedSamplePharmacy('pending');
-      }
-    } else {
-      app = seedSamplePharmacy('pending');
+    let app: PharmacyApplicationResponse;
+    try {
+      app = JSON.parse(savedRaw);
+    } catch {
+      throw new PharmacyServiceError(
+        'Stored pharmacy application data is invalid. Please resubmit your application.',
+        'INVALID_STORAGE',
+        400
+      );
     }
 
     // Merge updated payload fields into application data
@@ -617,7 +624,7 @@ export async function updateOpeningHours(
 
 /**
  * Changes mock verification status in development mode to test
- * Pending, Verified, Rejected, and Suspended UI flows.
+ * Pending, Verified, Rejected, and Suspended UI flows for a submitted application.
  */
 export function setMockVerificationStatus(
   status: VerificationStatus,
@@ -625,16 +632,13 @@ export function setMockVerificationStatus(
   nextStep?: string
 ): PharmacyApplicationResponse | null {
   const saved = getStoredMockApplication();
-  let app: PharmacyApplicationResponse;
+  if (!saved) return null;
 
-  if (saved) {
-    try {
-      app = JSON.parse(saved);
-    } catch {
-      app = seedSamplePharmacy(status);
-    }
-  } else {
-    app = seedSamplePharmacy(status);
+  let app: PharmacyApplicationResponse;
+  try {
+    app = JSON.parse(saved);
+  } catch {
+    return null;
   }
 
   app.status = status;
@@ -644,65 +648,6 @@ export function setMockVerificationStatus(
 
   localStorage.setItem(getMockStorageKey(), JSON.stringify(app));
   return app;
-}
-
-/**
- * Seeds a realistic sample pharmacy in mock storage for testing and reviewer evaluation.
- */
-export function seedSamplePharmacy(
-  status: VerificationStatus = 'pending'
-): PharmacyApplicationResponse {
-  const defaultHours = createDefaultWeeklyHours();
-  const samplePayload: PharmacyApplicationPayload = {
-    name: 'MediCare Central Pharmacy',
-    ownerName: 'Dr. Rafiqul Islam, R.Ph',
-    phone: '+8801712345678',
-    email: 'contact@medicarecentral.com',
-    streetAddress: 'House 42, Road 11, Block D',
-    area: 'Banani',
-    city: 'Dhaka',
-    postalCode: '1213',
-    formattedAddress: 'House 42, Road 11, Block D, Banani, Dhaka - 1213',
-    licenseNo: 'DL-DHK-2024-8849',
-    issuingAuthority: 'Directorate General of Drug Administration (DGDA)',
-    licenseExpiryDate: '2028-12-31',
-    licenseType: 'Retail Drug Trade License (Model Pharmacy)',
-    latitude: 23.7925,
-    longitude: 90.4078,
-    location: {
-      type: 'Point',
-      coordinates: [90.4078, 23.7925],
-    },
-    openingHours: formatWeeklyHours(defaultHours),
-    structuredHours: defaultHours,
-    notes: 'Ground floor corner pharmacy near Banani Supermarket with temperature-controlled medicine storage.',
-  };
-
-  let reason: string | undefined;
-  let nextStep: string | undefined;
-
-  if (status === 'rejected') {
-    reason = 'Uploaded Drug Trade License certificate expired or name does not match national registry.';
-    nextStep = 'Please upload a renewed DGDA trade certificate and correct the legal trade name in your application.';
-  } else if (status === 'suspended') {
-    reason = 'Repeated customer complaints regarding inaccurate reported stock availability under investigation.';
-    nextStep = 'Contact MediFind Compliance at compliance@medifind.dev with your audit reference number to arrange re-audit.';
-  }
-
-  const sampleApp: PharmacyApplicationResponse = {
-    applicationId: 'app_sample_demo_882',
-    pharmacyId: 'ph_sample_demo_882',
-    status,
-    submittedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    message: 'Pharmacy onboarding application in state: ' + status,
-    data: samplePayload,
-    verificationReason: reason,
-    decisionReason: reason,
-    nextStep,
-  };
-
-  localStorage.setItem(getMockStorageKey(), JSON.stringify(sampleApp));
-  return sampleApp;
 }
 
 /**

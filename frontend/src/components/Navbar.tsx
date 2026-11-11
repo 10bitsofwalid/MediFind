@@ -1,39 +1,108 @@
 // src/components/Navbar.tsx
 import React, { useState, useMemo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../app/useAuth';
 import type { Role } from '../types/pharmacy';
-import { PlusCircle, LayoutDashboard, Building2, UserCheck, Menu, X, LogIn, Search, UserPlus } from 'lucide-react';
+import {
+  PlusCircle,
+  LayoutDashboard,
+  Building2,
+  UserCheck,
+  Menu,
+  X,
+  LogIn,
+  LogOut,
+  Search,
+  UserPlus,
+  ClipboardCheck,
+  Pill,
+  RefreshCw,
+} from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
+
+const USER_TYPE_LABELS: Record<Role, string> = {
+  CUSTOMER: 'Customer',
+  PHARMACY: 'Pharmacy Owner',
+  ADMIN: 'Administrator',
+};
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
-  const { user, switchRole } = useAuth();
+  const navigate = useNavigate();
+  const { user, selectedUserType, openWelcomeModal, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Dynamic role-aware navigation links (resolves UI-02)
+  const effectiveRole: Role | null = user?.role ?? selectedUserType;
+
+  // Strictly separate navigation links by selected or authenticated user type
   const navLinks = useMemo(() => {
-    if (user?.role === 'CUSTOMER' || !user) {
+    if (effectiveRole === 'PHARMACY') {
+      if (user?.role === 'PHARMACY') {
+        return [
+          { to: '/pharmacy/dashboard', label: 'Owner Workspace', icon: LayoutDashboard },
+          { to: '/pharmacy/profile', label: 'Pharmacy Profile', icon: Building2 },
+          { to: '/pharmacy/register', label: 'Onboarding Application', icon: PlusCircle },
+        ];
+      }
       return [
-        { to: '/', label: 'Find medicine', icon: Search },
-        { to: '/login', label: 'Sign in', icon: LogIn },
-        { to: '/register', label: 'Create account', icon: UserPlus },
-        { to: '/pharmacy/register', label: 'For pharmacies', icon: Building2 },
-      ];
-    }
-    if (user?.role === 'ADMIN') {
-      return [
-        { to: '/pharmacy/dashboard', label: 'Admin Workspace', icon: LayoutDashboard },
-        { to: '/pharmacy/profile', label: 'Pharmacy Profile', icon: Building2 },
+        { to: '/login', label: 'Sign In', icon: LogIn },
+        { to: '/register', label: 'Create Account', icon: UserPlus },
         { to: '/pharmacy/register', label: 'Onboarding Application', icon: PlusCircle },
       ];
     }
-    return [
-      { to: '/pharmacy/dashboard', label: 'Owner Workspace', icon: LayoutDashboard },
-      { to: '/pharmacy/profile', label: 'Pharmacy Profile', icon: Building2 },
-      { to: '/pharmacy/register', label: 'Onboarding Application', icon: PlusCircle },
-    ];
-  }, [user]);
+
+    if (effectiveRole === 'ADMIN') {
+      if (user?.role === 'ADMIN') {
+        return [
+          { to: '/admin/dashboard', label: 'Admin Dashboard', icon: LayoutDashboard },
+          { to: '/admin/verification', label: 'Verification Queue', icon: ClipboardCheck },
+          { to: '/admin/catalogue', label: 'Medicine Catalogue', icon: Pill },
+        ];
+      }
+      return [{ to: '/login', label: 'Admin Sign In', icon: LogIn }];
+    }
+
+    if (effectiveRole === 'CUSTOMER') {
+      if (user?.role === 'CUSTOMER') {
+        return [
+          { to: '/', label: 'Find Medicine', icon: Search },
+          { to: '/search', label: 'Search Stock', icon: Search },
+        ];
+      }
+      return [
+        { to: '/', label: 'Find Medicine', icon: Search },
+        { to: '/search', label: 'Search Stock', icon: Search },
+        { to: '/login', label: 'Sign In', icon: LogIn },
+        { to: '/register', label: 'Create Account', icon: UserPlus },
+      ];
+    }
+
+    return [];
+  }, [effectiveRole, user]);
+
+  const brandHomePath = useMemo(() => {
+    if (effectiveRole === 'PHARMACY') {
+      return user?.role === 'PHARMACY' ? '/pharmacy/dashboard' : '/login';
+    }
+    if (effectiveRole === 'ADMIN') {
+      return user?.role === 'ADMIN' ? '/admin/dashboard' : '/login';
+    }
+    return '/';
+  }, [effectiveRole, user]);
+
+  const brandSubtitle = useMemo(() => {
+    if (effectiveRole === 'PHARMACY') return 'Pharmacy Operations';
+    if (effectiveRole === 'ADMIN') return 'Platform Administration';
+    if (effectiveRole === 'CUSTOMER') return 'Customer Medicine Discovery';
+    return 'Healthcare Discovery Platform';
+  }, [effectiveRole]);
+
+  const handleLogout = () => {
+    const roleBeforeLogout = user?.role ?? selectedUserType;
+    logout();
+    setMobileMenuOpen(false);
+    navigate(roleBeforeLogout === 'CUSTOMER' ? '/' : '/login');
+  };
 
   return (
     <header
@@ -55,19 +124,21 @@ export const Navbar: React.FC = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          gap: '12px',
         }}
       >
         {/* Brand Logo & Title */}
         <Link
-          to={user?.role === 'CUSTOMER' || !user ? '/' : '/pharmacy/dashboard'}
+          to={brandHomePath}
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
             textDecoration: 'none',
             color: 'var(--color-text-primary)',
+            flexShrink: 0,
           }}
-          aria-label={user?.role === 'CUSTOMER' || !user ? 'MediFind Home' : 'MediFind Pharmacy Operations Home'}
+          aria-label={`MediFind ${brandSubtitle}`}
         >
           <BrandLogo size={36} />
           <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -75,7 +146,7 @@ export const Navbar: React.FC = () => {
               MediFind
             </span>
             <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
-              {user?.role === 'CUSTOMER' || !user ? 'Find care with confidence' : 'Pharmacy Operations'}
+              {brandSubtitle}
             </span>
           </div>
         </Link>
@@ -87,7 +158,7 @@ export const Navbar: React.FC = () => {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '6px',
           }}
         >
           {navLinks.map(({ to, label, icon: Icon }) => {
@@ -100,61 +171,79 @@ export const Navbar: React.FC = () => {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  padding: '8px 14px',
+                  padding: '8px 12px',
                   borderRadius: 'var(--radius-md)',
-                  fontSize: '14px',
+                  fontSize: '13px',
                   fontWeight: isActive ? 600 : 500,
                   textDecoration: 'none',
                   color: isActive ? 'var(--color-action-primary)' : 'var(--color-text-secondary)',
                   backgroundColor: isActive ? 'var(--color-action-subtle)' : 'transparent',
-                  minHeight: '40px',
+                  minHeight: '38px',
+                  whiteSpace: 'nowrap',
                 }}
                 aria-current={isActive ? 'page' : undefined}
               >
-                <Icon size={16} aria-hidden="true" />
+                <Icon size={15} aria-hidden="true" />
                 <span>{label}</span>
               </Link>
             );
           })}
         </nav>
 
-        {/* User Role Badge & Switcher for Testing */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            className="role-pill"
+        {/* User Type Switcher, Sign Out & Mobile Menu Toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={openWelcomeModal}
+            className="btn-secondary"
             style={{
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
+              gap: '5px',
+              padding: '5px 9px',
               borderRadius: 'var(--radius-full)',
               backgroundColor: 'var(--color-surface-canvas)',
               border: '1px solid var(--color-border-default)',
               fontSize: '12px',
-              color: 'var(--color-text-secondary)',
+              color: 'var(--color-text-primary)',
+              fontWeight: 600,
+              cursor: 'pointer',
+              minHeight: '34px',
+              whiteSpace: 'nowrap',
             }}
+            aria-label="Switch user type"
           >
-            <UserCheck size={14} color="var(--color-action-primary)" aria-hidden="true" />
-            <span>Role:</span>
-            <select
-              value={user?.role || 'PHARMACY'}
-              onChange={(e) => switchRole(e.target.value as Role)}
-              aria-label="Active session role for testing"
+            <UserCheck size={13} color="var(--color-action-primary)" aria-hidden="true" />
+            <span>{effectiveRole ? USER_TYPE_LABELS[effectiveRole] : 'Select Type'}</span>
+            <RefreshCw size={11} color="var(--color-text-secondary)" aria-hidden="true" />
+          </button>
+
+          {user && (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="desktop-nav btn-secondary"
               style={{
-                border: 'none',
-                background: 'transparent',
-                fontWeight: 600,
-                color: 'var(--color-text-primary)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '6px 10px',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border-default)',
+                backgroundColor: 'var(--color-surface-panel)',
+                color: 'var(--color-text-secondary)',
                 fontSize: '12px',
+                fontWeight: 500,
                 cursor: 'pointer',
-                outline: 'none',
+                minHeight: '34px',
+                whiteSpace: 'nowrap',
               }}
+              aria-label="Sign out"
             >
-              <option value="PHARMACY">Pharmacy Owner</option>
-              <option value="CUSTOMER">Customer</option>
-              <option value="ADMIN">Administrator</option>
-            </select>
-          </div>
+              <LogOut size={13} aria-hidden="true" />
+              <span>Sign out</span>
+            </button>
+          )}
 
           {/* Mobile hamburger menu toggle */}
           <button
@@ -232,6 +321,54 @@ export const Navbar: React.FC = () => {
                 <span>{label}</span>
               </Link>
             ))}
+
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                openWelcomeModal();
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '15px',
+                border: '1px solid var(--color-border-default)',
+                backgroundColor: 'var(--color-surface-canvas)',
+                color: 'var(--color-action-primary)',
+                fontWeight: 600,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <RefreshCw size={18} aria-hidden="true" />
+              <span>Switch User Type</span>
+            </button>
+
+            {user && (
+              <button
+                type="button"
+                onClick={handleLogout}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '12px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '15px',
+                  border: 'none',
+                  backgroundColor: 'transparent',
+                  color: 'var(--color-status-problem)',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <LogOut size={18} aria-hidden="true" />
+                <span>Sign out</span>
+              </button>
+            )}
           </nav>
         </>
       )}

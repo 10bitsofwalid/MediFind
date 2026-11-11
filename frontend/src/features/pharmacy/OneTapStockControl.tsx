@@ -200,7 +200,9 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
             fontSize: '14px',
           }}
         >
-          No medicines match your search.
+          {inventory.length === 0
+            ? 'No medicines in your pharmacy inventory yet.'
+            : 'No medicines match your search.'}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
