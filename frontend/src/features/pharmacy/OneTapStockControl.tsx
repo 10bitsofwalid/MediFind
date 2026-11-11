@@ -1,11 +1,12 @@
 // src/features/pharmacy/OneTapStockControl.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import type { StockStatus } from '../../types/pharmacy';
-import type { StockInventoryRecord } from '../../types/medicine';
+import type { StockInventoryRecord, AddInventoryMedicinePayload } from '../../types/medicine';
 import { stockService } from '../../services/stockService';
 import { AvailabilityStatus } from '../../components/AvailabilityStatus';
 import { FreshnessBadge } from '../../components/FreshnessBadge';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
+import { InventoryMedicineModal } from './InventoryMedicineModal';
 import {
   Search,
   CheckCircle2,
@@ -14,6 +15,8 @@ import {
   RefreshCw,
   Sparkles,
   Pill,
+  Plus,
+  Edit3,
 } from 'lucide-react';
 
 interface OneTapStockControlProps {
@@ -28,6 +31,11 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [updatingStockId, setUpdatingStockId] = useState<string | null>(null);
   const [lastSavedMessage, setLastSavedMessage] = useState<string | null>(null);
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    mode: 'add' | 'edit';
+    item: StockInventoryRecord | null;
+  }>({ isOpen: false, mode: 'add', item: null });
 
   const fetchInventory = async () => {
     setIsLoading(true);
@@ -95,22 +103,41 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     }
   };
 
+  const handleSaveMedicineModal = async (payload: AddInventoryMedicinePayload) => {
+    setLastSavedMessage(null);
+    if (modalState.mode === 'add') {
+      const created = await stockService.addInventoryItem(pharmacyId, payload);
+      setInventory((prev) => [created, ...prev]);
+      setLastSavedMessage(`Added ${created.medicineName} (${created.strength}) to inventory.`);
+    } else if (modalState.item) {
+      const updated = await stockService.updateInventoryItem(
+        pharmacyId,
+        modalState.item.stockId,
+        payload
+      );
+      setInventory((prev) =>
+        prev.map((i) => (i.stockId === updated.stockId ? updated : i))
+      );
+      setLastSavedMessage(`Updated medicine information for ${updated.medicineName}.`);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
       {/* Notice & Disclaimer */}
       <DisclaimerBanner variant="inline" />
 
-      {/* Search & Stats Bar */}
+      {/* Search & Actions Bar */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
-          gap: '12px',
+          gap: '10px',
         }}
       >
-        <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
           <Search
             size={16}
             color="var(--color-text-secondary)"
@@ -135,28 +162,48 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
           />
         </div>
 
-        <button
-          type="button"
-          onClick={fetchInventory}
-          disabled={isLoading}
-          className="btn-secondary"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '13px',
-            padding: '8px 14px',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-border-default)',
-            backgroundColor: 'var(--color-surface-panel)',
-            color: 'var(--color-text-secondary)',
-            cursor: isLoading ? 'not-allowed' : 'pointer',
-          }}
-          aria-label="Refresh medicine inventory"
-        >
-          <RefreshCw size={13} aria-hidden={true} />
-          <span>Refresh</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setModalState({ isOpen: true, mode: 'add', item: null })}
+            className="btn-primary"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px',
+              padding: '9px 16px',
+              borderRadius: 'var(--radius-md)',
+              cursor: 'pointer',
+            }}
+          >
+            <Plus size={15} aria-hidden={true} />
+            <span>Add Medicine</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={fetchInventory}
+            disabled={isLoading}
+            className="btn-secondary"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px',
+              padding: '9px 14px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border-default)',
+              backgroundColor: 'var(--color-surface-panel)',
+              color: 'var(--color-text-secondary)',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+            }}
+            aria-label="Refresh medicine inventory"
+          >
+            <RefreshCw size={13} aria-hidden={true} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Confirmation feedback banner */}
@@ -200,9 +247,30 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
             fontSize: '14px',
           }}
         >
-          {inventory.length === 0
-            ? 'No medicines in your pharmacy inventory yet.'
-            : 'No medicines match your search.'}
+          {inventory.length === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+              <span>No medicines in your pharmacy inventory yet.</span>
+              <button
+                type="button"
+                onClick={() => setModalState({ isOpen: true, mode: 'add', item: null })}
+                className="btn-primary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '13px',
+                  padding: '9px 16px',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                }}
+              >
+                <Plus size={15} aria-hidden="true" />
+                <span>Add First Medicine</span>
+              </button>
+            </div>
+          ) : (
+            'No medicines match your search.'
+          )}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -227,7 +295,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
               >
                 {/* Left: Medicine Info */}
                 <div style={{ flex: 1, minWidth: '220px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
                     <Pill size={16} color="var(--color-action-primary)" aria-hidden="true" />
                     <strong style={{ fontSize: '15px', color: 'var(--color-text-primary)' }}>
                       {item.medicineName}
@@ -244,11 +312,33 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                     >
                       {item.strength} • {item.form}
                     </span>
+                    {item.prescriptionRequired && (
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          padding: '1px 7px',
+                          borderRadius: 'var(--radius-full)',
+                          backgroundColor: 'var(--color-status-caution-bg)',
+                          color: 'var(--color-status-caution)',
+                        }}
+                      >
+                        Rx Required
+                      </span>
+                    )}
                   </div>
 
-                  <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '6px' }}>
                     Generic: {item.genericName}
+                    {item.manufacturer ? ` • ${item.manufacturer}` : ''}
+                    {item.price !== undefined ? ` • Price: ${item.price.toFixed(2)}` : ''}
                   </div>
+
+                  {item.notes && (
+                    <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
+                      Note: {item.notes}
+                    </div>
+                  )}
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <AvailabilityStatus status={item.status} quantity={item.quantity} size="sm" />
@@ -256,7 +346,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                   </div>
                 </div>
 
-                {/* Right: One-Tap Fast Status Selection Buttons */}
+                {/* Right: One-Tap Fast Status Selection & Edit Info Buttons */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginRight: '4px' }}>
                     Set:
@@ -346,11 +436,47 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                     <XCircle size={13} aria-hidden="true" />
                     <span>Out</span>
                   </button>
+
+                  {/* Edit Medicine Information Button */}
+                  <button
+                    type="button"
+                    onClick={() => setModalState({ isOpen: true, mode: 'edit', item })}
+                    disabled={isUpdating}
+                    className="btn-secondary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '6px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--color-border-default)',
+                      backgroundColor: 'var(--color-surface-panel)',
+                      color: 'var(--color-action-primary)',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: isUpdating ? 'not-allowed' : 'pointer',
+                      marginLeft: '4px',
+                    }}
+                    aria-label={`Edit medicine information for ${item.medicineName}`}
+                  >
+                    <Edit3 size={13} aria-hidden="true" />
+                    <span>Edit Info</span>
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {modalState.isOpen && (
+        <InventoryMedicineModal
+          key={`${modalState.mode}_${modalState.item?.stockId || 'new'}`}
+          mode={modalState.mode}
+          initialItem={modalState.item}
+          onClose={() => setModalState((prev) => ({ ...prev, isOpen: false }))}
+          onSave={handleSaveMedicineModal}
+        />
       )}
     </div>
   );

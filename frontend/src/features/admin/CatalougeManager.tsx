@@ -11,6 +11,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Power,
+  Edit3,
+  Check,
+  X,
 } from 'lucide-react';
 
 export const CatalougeManager: React.FC = () => {
@@ -21,12 +24,14 @@ export const CatalougeManager: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Add Medicine form fields
+  // Add / Edit Medicine form fields
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState<string>('');
   const [genericName, setGenericName] = useState<string>('');
   const [form, setForm] = useState<string>('Tablet');
   const [strength, setStrength] = useState<string>('');
   const [manufacturer, setManufacturer] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
   const [prescriptionRequired, setPrescriptionRequired] = useState<boolean>(false);
 
   useEffect(() => {
@@ -61,7 +66,32 @@ export const CatalougeManager: React.FC = () => {
     );
   }, [medicines, searchQuery]);
 
-  const handleAddMedicine = async (e: React.FormEvent) => {
+  const resetForm = () => {
+    setEditingId(null);
+    setName('');
+    setGenericName('');
+    setForm('Tablet');
+    setStrength('');
+    setManufacturer('');
+    setDescription('');
+    setPrescriptionRequired(false);
+  };
+
+  const handleStartEdit = (med: Medicine) => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    setEditingId(med.id);
+    setName(med.name);
+    setGenericName(med.genericName);
+    setForm(med.form || 'Tablet');
+    setStrength(med.strength);
+    setManufacturer(med.manufacturer || '');
+    setDescription(med.description || '');
+    setPrescriptionRequired(Boolean(med.prescriptionRequired));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSubmitMedicine = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -73,23 +103,35 @@ export const CatalougeManager: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const created = await adminService.createCatalogueMedicine({
-        name,
-        genericName,
-        form,
-        strength,
-        manufacturer,
-        prescriptionRequired,
-      });
-      setMedicines((prev) => [created, ...prev]);
-      setName('');
-      setGenericName('');
-      setStrength('');
-      setManufacturer('');
-      setPrescriptionRequired(false);
-      setSuccessMsg(`Added "${created.name}" (${created.strength}) to curated catalogue.`);
+      if (editingId) {
+        const updated = await adminService.updateCatalogueMedicine(editingId, {
+          name,
+          genericName,
+          form,
+          strength,
+          manufacturer,
+          description,
+          prescriptionRequired,
+        });
+        setMedicines((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+        resetForm();
+        setSuccessMsg(`Updated "${updated.name}" (${updated.strength}) in curated catalogue.`);
+      } else {
+        const created = await adminService.createCatalogueMedicine({
+          name,
+          genericName,
+          form,
+          strength,
+          manufacturer,
+          description,
+          prescriptionRequired,
+        });
+        setMedicines((prev) => [created, ...prev]);
+        resetForm();
+        setSuccessMsg(`Added "${created.name}" (${created.strength}) to curated catalogue.`);
+      }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to create medicine entry.');
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save medicine entry.');
     } finally {
       setIsSaving(false);
     }
@@ -134,7 +176,7 @@ export const CatalougeManager: React.FC = () => {
           Medicine Catalogue Manager
         </h1>
         <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)', margin: 0 }}>
-          Create and maintain curated medicine entries available for customer search and pharmacy inventory listings.
+          Create, update, and maintain curated medicine entries available for customer search and pharmacy inventory listings.
         </p>
       </div>
 
@@ -181,7 +223,7 @@ export const CatalougeManager: React.FC = () => {
         </div>
       )}
 
-      {/* Add New Catalogue Medicine Form */}
+      {/* Add / Edit Catalogue Medicine Form */}
       <section
         className="card"
         aria-labelledby="add-medicine-heading"
@@ -194,11 +236,34 @@ export const CatalougeManager: React.FC = () => {
           marginBottom: '24px',
         }}
       >
-        <h2 id="add-medicine-heading" style={{ fontSize: '17px', fontWeight: 700, margin: '0 0 14px' }}>
-          Add Curated Medicine
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+          <h2 id="add-medicine-heading" style={{ fontSize: '17px', fontWeight: 700, margin: 0 }}>
+            {editingId ? 'Update Curated Medicine Information' : 'Add Curated Medicine'}
+          </h2>
+          {editingId && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="btn-secondary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '12px',
+                padding: '6px 10px',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border-default)',
+                backgroundColor: 'var(--color-surface-canvas)',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={13} aria-hidden="true" />
+              <span>Cancel Edit</span>
+            </button>
+          )}
+        </div>
 
-        <form onSubmit={handleAddMedicine} noValidate>
+        <form onSubmit={handleSubmitMedicine} noValidate>
           <div
             style={{
               display: 'grid',
@@ -318,6 +383,27 @@ export const CatalougeManager: React.FC = () => {
                 }}
               />
             </div>
+
+            <div>
+              <label htmlFor="cat-description" style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '5px' }}>
+                Description (Optional)
+              </label>
+              <input
+                id="cat-description"
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Reference description"
+                disabled={isSaving}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border-default)',
+                  fontSize: '14px',
+                }}
+              />
+            </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
@@ -346,8 +432,14 @@ export const CatalougeManager: React.FC = () => {
                 cursor: isSaving ? 'not-allowed' : 'pointer',
               }}
             >
-              <Plus size={16} aria-hidden="true" />
-              <span>{isSaving ? 'Adding...' : 'Add to Catalogue'}</span>
+              {editingId ? <Check size={16} aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}
+              <span>
+                {isSaving
+                  ? 'Saving...'
+                  : editingId
+                  ? 'Save Medicine Changes'
+                  : 'Add to Catalogue'}
+              </span>
             </button>
           </div>
         </form>
@@ -420,7 +512,10 @@ export const CatalougeManager: React.FC = () => {
                 className="card"
                 style={{
                   backgroundColor: 'var(--color-surface-panel)',
-                  border: '1px solid var(--color-border-default)',
+                  border:
+                    editingId === med.id
+                      ? '1px solid var(--color-action-primary)'
+                      : '1px solid var(--color-border-default)',
                   borderRadius: 'var(--radius-lg)',
                   padding: '14px 18px',
                   display: 'flex',
@@ -465,29 +560,58 @@ export const CatalougeManager: React.FC = () => {
                     {med.manufacturer ? ` • ${med.manufacturer}` : ''}
                     {med.prescriptionRequired ? ' • Prescription Required' : ''}
                   </div>
+                  {med.description && (
+                    <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '3px' }}>
+                      {med.description}
+                    </div>
+                  )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleToggleActive(med)}
-                  className="btn-secondary"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '7px 12px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border-default)',
-                    backgroundColor: 'var(--color-surface-canvas)',
-                    color: 'var(--color-text-primary)',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Power size={13} aria-hidden="true" />
-                  <span>{med.active ? 'Deactivate' : 'Activate'}</span>
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleStartEdit(med)}
+                    className="btn-secondary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '7px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--color-border-default)',
+                      backgroundColor: 'var(--color-surface-canvas)',
+                      color: 'var(--color-action-primary)',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Edit3 size={13} aria-hidden="true" />
+                    <span>Edit Info</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleToggleActive(med)}
+                    className="btn-secondary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--color-border-default)',
+                      backgroundColor: 'var(--color-surface-canvas)',
+                      color: 'var(--color-text-primary)',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Power size={13} aria-hidden="true" />
+                    <span>{med.active ? 'Deactivate' : 'Activate'}</span>
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -496,4 +620,3 @@ export const CatalougeManager: React.FC = () => {
     </div>
   );
 };
-

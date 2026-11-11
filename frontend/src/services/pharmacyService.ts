@@ -647,7 +647,83 @@ export function setMockVerificationStatus(
   app.nextStep = nextStep;
 
   localStorage.setItem(getMockStorageKey(), JSON.stringify(app));
+  window.dispatchEvent(new CustomEvent('medifind:pharmacy-status-updated'));
   return app;
+}
+
+/**
+ * Deletes the owner's submitted pharmacy application if it has not been approved.
+ * Endpoint: DELETE /owner/pharmacy-application
+ */
+export async function deletePharmacyApplication(applicationId?: string): Promise<void> {
+  if (isMockApiEnabled()) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const savedRaw = getStoredMockApplication();
+    if (!savedRaw) {
+      throw new PharmacyServiceError(
+        'No submitted pharmacy application found to delete.',
+        'NOT_FOUND',
+        404
+      );
+    }
+
+    let app: PharmacyApplicationResponse;
+    try {
+      app = JSON.parse(savedRaw);
+    } catch {
+      clearMockApplication();
+      return;
+    }
+
+    if (app.status === 'verified') {
+      throw new PharmacyServiceError(
+        'Approved pharmacy applications cannot be deleted.',
+        'FORBIDDEN_APPROVED',
+        403
+      );
+    }
+
+    if (app.status === 'suspended') {
+      throw new PharmacyServiceError(
+        'Suspended pharmacy records cannot be deleted. Contact MediFind Compliance for assistance.',
+        'FORBIDDEN_SUSPENDED',
+        403
+      );
+    }
+
+    const userKey = getMockStorageKey();
+    localStorage.removeItem(userKey);
+    const legacyRaw = localStorage.getItem(DEFAULT_MOCK_STORAGE_KEY);
+    if (legacyRaw) {
+      try {
+        const legacyParsed = JSON.parse(legacyRaw) as PharmacyApplicationResponse;
+        if (!applicationId || legacyParsed.applicationId === app.applicationId) {
+          localStorage.removeItem(DEFAULT_MOCK_STORAGE_KEY);
+        }
+      } catch {
+        localStorage.removeItem(DEFAULT_MOCK_STORAGE_KEY);
+      }
+    }
+    return;
+  }
+
+  try {
+    const endpoint = applicationId
+      ? `/owner/pharmacy-applications/${applicationId}`
+      : '/owner/pharmacy-application';
+    await api.delete(endpoint);
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response?.data?.error) {
+      const errorData = err.response.data.error;
+      throw new PharmacyServiceError(
+        errorData.message || 'Failed to delete pharmacy application.',
+        errorData.code,
+        err.response.status,
+        errorData.fields
+      );
+    }
+    throw err;
+  }
 }
 
 /**

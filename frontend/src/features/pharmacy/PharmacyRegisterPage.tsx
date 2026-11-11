@@ -10,6 +10,7 @@ import type {
 import {
   submitPharmacyApplication,
   getPharmacyApplication,
+  deletePharmacyApplication,
   createDefaultWeeklyHours,
   formatWeeklyHours,
   validateWeeklyHours,
@@ -19,6 +20,7 @@ import {
 } from '../../services/pharmacyService';
 import { LocationPicker } from '../../components/LocationPicker';
 import { OpeningHoursBuilder } from '../../components/OpeningHoursBuilder';
+import { DeleteApplicationModal } from '../../components/DeleteApplicationModal';
 import { DEFAULT_LATITUDE, DEFAULT_LONGITUDE } from '../../config/constants';
 import {
   Building2,
@@ -35,6 +37,8 @@ import {
   Printer,
   ChevronRight,
   Info,
+  Trash2,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface FormErrors {
@@ -126,6 +130,10 @@ export const PharmacyRegisterPage: React.FC = () => {
 
   // Successful submission result from server
   const [submittedApplication, setSubmittedApplication] = useState<PharmacyApplicationResponse | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
 
   // Check for existing pending application on initial mount
   useEffect(() => {
@@ -438,6 +446,7 @@ export const PharmacyRegisterPage: React.FC = () => {
     try {
       const response = await submitPharmacyApplication(payload);
       // Server returned confirmation with authoritative 'pending' status
+      setDeleteSuccessMessage(null);
       setSubmittedApplication(response);
       sessionStorage.removeItem(DRAFT_STORAGE_KEY);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -482,15 +491,63 @@ export const PharmacyRegisterPage: React.FC = () => {
     }
   };
 
+  const resetFormToInitial = () => {
+    setName('');
+    setOwnerName('');
+    setPhone('');
+    setEmail('');
+    setStreetAddress('');
+    setCity('');
+    setArea('');
+    setPostalCode('');
+    setLatitude(DEFAULT_LATITUDE);
+    setLongitude(DEFAULT_LONGITUDE);
+    setLicenseNo('');
+    setIssuingAuthority('');
+    setLicenseExpiryDate('');
+    setLicenseType('Retail Pharmacy');
+    setWeeklyHours(createDefaultWeeklyHours());
+    setDeclarationConfirmed(false);
+    setAdditionalNotes('');
+    setErrors({});
+    setTouched({});
+    setCurrentStep('business');
+    setMaxStepReached(0);
+    sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+  };
+
+  const handleDeleteApplication = async () => {
+    if (!submittedApplication) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deletePharmacyApplication(submittedApplication.applicationId);
+      setSubmittedApplication(null);
+      setShowDeleteModal(false);
+      resetFormToInitial();
+      setDeleteSuccessMessage('Your submitted pharmacy application has been deleted.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err: unknown) {
+      setDeleteError(
+        err instanceof Error ? err.message : 'Failed to delete pharmacy application.'
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // -------------------------------------------------------------
-  // RENDER: PENDING REVIEW CONFIRMATION
+  // RENDER: SUBMITTED APPLICATION STATUS & SUMMARY
   // -------------------------------------------------------------
   if (submittedApplication && submittedApplication.data) {
     const appData = submittedApplication.data;
+    const appStatus = submittedApplication.status;
+    const canDeleteApplication = appStatus === 'pending' || appStatus === 'rejected';
+    const isApproved = appStatus === 'verified';
 
     return (
       <div className="onboarding-confirmation-page" style={{ maxWidth: '780px', margin: '0 auto', padding: '32px 16px' }}>
-        {/* Authoritative Pending Review Header Card */}
+        {/* Authoritative Application Status Header Card */}
         <div
           className="card"
           style={{
@@ -509,9 +566,21 @@ export const PharmacyRegisterPage: React.FC = () => {
               width: '64px',
               height: '64px',
               borderRadius: '50%',
-              backgroundColor: 'var(--color-status-caution-bg)',
-              color: 'var(--color-status-caution)',
-              border: '1px solid rgba(152, 88, 0, 0.25)',
+              backgroundColor: isApproved
+                ? 'var(--color-status-available-bg)'
+                : appStatus === 'pending'
+                ? 'var(--color-status-caution-bg)'
+                : 'var(--color-status-problem-bg)',
+              color: isApproved
+                ? 'var(--color-status-available)'
+                : appStatus === 'pending'
+                ? 'var(--color-status-caution)'
+                : 'var(--color-status-problem)',
+              border: isApproved
+                ? '1px solid rgba(24, 115, 75, 0.25)'
+                : appStatus === 'pending'
+                ? '1px solid rgba(152, 88, 0, 0.25)'
+                : '1px solid rgba(180, 35, 47, 0.25)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -519,7 +588,13 @@ export const PharmacyRegisterPage: React.FC = () => {
             }}
             aria-hidden="true"
           >
-            <Clock3 size={36} />
+            {isApproved ? (
+              <CheckCircle2 size={36} />
+            ) : appStatus === 'pending' ? (
+              <Clock3 size={36} />
+            ) : (
+              <ShieldAlert size={36} />
+            )}
           </div>
 
           <div
@@ -529,17 +604,44 @@ export const PharmacyRegisterPage: React.FC = () => {
               gap: '6px',
               padding: '6px 14px',
               borderRadius: 'var(--radius-full)',
-              backgroundColor: 'var(--color-status-caution-bg)',
-              border: '1px solid rgba(152, 88, 0, 0.25)',
-              color: 'var(--color-status-caution)',
+              backgroundColor: isApproved
+                ? 'var(--color-status-available-bg)'
+                : appStatus === 'pending'
+                ? 'var(--color-status-caution-bg)'
+                : 'var(--color-status-problem-bg)',
+              border: isApproved
+                ? '1px solid rgba(24, 115, 75, 0.25)'
+                : appStatus === 'pending'
+                ? '1px solid rgba(152, 88, 0, 0.25)'
+                : '1px solid rgba(180, 35, 47, 0.25)',
+              color: isApproved
+                ? 'var(--color-status-available)'
+                : appStatus === 'pending'
+                ? 'var(--color-status-caution)'
+                : 'var(--color-status-problem)',
               fontSize: '13px',
               fontWeight: 600,
               letterSpacing: '0.02em',
               marginBottom: '12px',
             }}
           >
-            <Clock size={14} aria-hidden="true" />
-            <span>APPLICATION STATUS: PENDING REVIEW</span>
+            {isApproved ? (
+              <CheckCircle2 size={14} aria-hidden="true" />
+            ) : appStatus === 'pending' ? (
+              <Clock size={14} aria-hidden="true" />
+            ) : (
+              <AlertCircle size={14} aria-hidden="true" />
+            )}
+            <span>
+              APPLICATION STATUS:{' '}
+              {isApproved
+                ? 'APPROVED & VERIFIED'
+                : appStatus === 'rejected'
+                ? 'NOT APPROVED (REJECTED)'
+                : appStatus === 'suspended'
+                ? 'SUSPENDED'
+                : 'PENDING REVIEW'}
+            </span>
           </div>
 
           <h1
@@ -551,7 +653,13 @@ export const PharmacyRegisterPage: React.FC = () => {
               marginBottom: '12px',
             }}
           >
-            Pharmacy Application Submitted
+            {isApproved
+              ? 'Pharmacy Application Approved'
+              : appStatus === 'rejected'
+              ? 'Pharmacy Application Not Approved'
+              : appStatus === 'suspended'
+              ? 'Pharmacy Application Suspended'
+              : 'Pharmacy Application Submitted'}
           </h1>
 
           <p
@@ -563,8 +671,25 @@ export const PharmacyRegisterPage: React.FC = () => {
               lineHeight: 1.5,
             }}
           >
-            Your application for <strong>{appData.name}</strong> has been received by MediFind and is currently
-            queued for administrator regulatory verification.
+            {isApproved ? (
+              <>
+                Your application for <strong>{appData.name}</strong> has been approved and verified by an administrator.
+              </>
+            ) : appStatus === 'rejected' ? (
+              <>
+                Your application for <strong>{appData.name}</strong> was not approved. You can delete this submission and
+                reapply or correct it.
+              </>
+            ) : appStatus === 'suspended' ? (
+              <>
+                Your listing for <strong>{appData.name}</strong> is currently suspended pending compliance review.
+              </>
+            ) : (
+              <>
+                Your application for <strong>{appData.name}</strong> has been received by MediFind and is currently
+                queued for administrator regulatory verification.
+              </>
+            )}
           </p>
 
           {/* Trust and Non-Publication Guarantee Notice */}
@@ -587,11 +712,21 @@ export const PharmacyRegisterPage: React.FC = () => {
             <Info size={20} color="var(--color-action-primary)" style={{ flexShrink: 0, marginTop: '2px' }} aria-hidden="true" />
             <div>
               <strong style={{ color: 'var(--color-text-primary)', display: 'block', marginBottom: '2px' }}>
-                Important Listing Notice
+                {isApproved ? 'Approved Record Policy' : 'Important Listing Notice'}
               </strong>
-              In accordance with MediFind safety standards and healthcare integrity rules, your pharmacy is{' '}
-              <strong>not publicly listed or verified</strong> yet. Medicine stock reporting and reservations remain locked
-              until an administrator verifies your drug trade licence with official registries.
+              {isApproved ? (
+                <>
+                  Approved pharmacy listings cannot be deleted from onboarding. Manage your pharmacy profile and
+                  medicine stock from your Owner Workspace.
+                </>
+              ) : (
+                <>
+                  In accordance with MediFind safety standards and healthcare integrity rules, your pharmacy is{' '}
+                  <strong>not publicly listed or verified</strong> yet. Medicine stock reporting and reservations remain
+                  locked until an administrator verifies your drug trade licence with official registries. You may delete
+                  this application at any time before it is approved.
+                </>
+              )}
             </div>
           </div>
 
@@ -624,121 +759,123 @@ export const PharmacyRegisterPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Verification Next Steps Card */}
-        <div
-          className="card"
-          style={{
-            backgroundColor: 'var(--color-surface-panel)',
-            border: '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-xl)',
-            padding: '24px 28px',
-            boxShadow: 'var(--shadow-sm)',
-            marginBottom: '28px',
-          }}
-        >
-          <h2
+        {/* Verification Next Steps Card (only while pending) */}
+        {appStatus === 'pending' && (
+          <div
+            className="card"
             style={{
-              fontSize: '18px',
-              fontWeight: 600,
-              color: 'var(--color-text-primary)',
-              marginBottom: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
+              backgroundColor: 'var(--color-surface-panel)',
+              border: '1px solid var(--color-border-default)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '24px 28px',
+              boxShadow: 'var(--shadow-sm)',
+              marginBottom: '28px',
             }}
           >
-            <ShieldCheck size={20} color="var(--color-action-primary)" aria-hidden="true" />
-            <span>Verification Process & Timeline</span>
-          </h2>
+            <h2
+              style={{
+                fontSize: '18px',
+                fontWeight: 600,
+                color: 'var(--color-text-primary)',
+                marginBottom: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <ShieldCheck size={20} color="var(--color-action-primary)" aria-hidden="true" />
+              <span>Verification Process &amp; Timeline</span>
+            </h2>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-              <div
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-action-subtle)',
-                  color: 'var(--color-action-primary)',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                1
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                <div
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--color-action-subtle)',
+                    color: 'var(--color-action-primary)',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  1
+                </div>
+                <div>
+                  <strong style={{ fontSize: '14px', color: 'var(--color-text-primary)', display: 'block' }}>
+                    Document &amp; Licence Validation
+                  </strong>
+                  <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                    Our compliance team cross-checks your Drug License ({appData.licenseNo}) with the{' '}
+                    {appData.issuingAuthority} regulatory registry.
+                  </span>
+                </div>
               </div>
-              <div>
-                <strong style={{ fontSize: '14px', color: 'var(--color-text-primary)', display: 'block' }}>
-                  Document & Licence Validation
-                </strong>
-                <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-                  Our compliance team cross-checks your Drug License ({appData.licenseNo}) with the{' '}
-                  {appData.issuingAuthority} regulatory registry.
-                </span>
-              </div>
-            </div>
 
-            <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-              <div
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-action-subtle)',
-                  color: 'var(--color-action-primary)',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                2
+              <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                <div
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--color-action-subtle)',
+                    color: 'var(--color-action-primary)',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  2
+                </div>
+                <div>
+                  <strong style={{ fontSize: '14px', color: 'var(--color-text-primary)', display: 'block' }}>
+                    Physical &amp; Geolocation Verification
+                  </strong>
+                  <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                    We verify your pharmacy address and entrance coordinates so nearby patients receive reliable routing.
+                  </span>
+                </div>
               </div>
-              <div>
-                <strong style={{ fontSize: '14px', color: 'var(--color-text-primary)', display: 'block' }}>
-                  Physical & Geolocation Verification
-                </strong>
-                <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-                  We verify your pharmacy address and entrance coordinates so nearby patients receive reliable routing.
-                </span>
-              </div>
-            </div>
 
-            <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-              <div
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-action-subtle)',
-                  color: 'var(--color-action-primary)',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                3
-              </div>
-              <div>
-                <strong style={{ fontSize: '14px', color: 'var(--color-text-primary)', display: 'block' }}>
-                  Activation & Public Listing
-                </strong>
-                <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-                  Average review time is <strong>1 to 2 business days</strong>. You will be notified when your status transitions
-                  to Verified.
-                </span>
+              <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                <div
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--color-action-subtle)',
+                    color: 'var(--color-action-primary)',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  3
+                </div>
+                <div>
+                  <strong style={{ fontSize: '14px', color: 'var(--color-text-primary)', display: 'block' }}>
+                    Activation &amp; Public Listing
+                  </strong>
+                  <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                    Average review time is <strong>1 to 2 business days</strong>. You will be notified when your status transitions
+                    to Verified.
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Application Summary Record Card */}
         <div
@@ -896,33 +1033,67 @@ export const PharmacyRegisterPage: React.FC = () => {
             <ChevronRight size={18} aria-hidden="true" />
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                window.confirm(
-                  'Are you sure you want to start a new application? This will allow you to edit or submit another pharmacy profile.'
-                )
-              ) {
+          {canDeleteApplication && (
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteError(null);
+                setShowDeleteModal(true);
+              }}
+              className="btn-secondary"
+              style={{
+                padding: '12px 22px',
+                fontSize: '14px',
+                fontWeight: 600,
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid rgba(180, 35, 47, 0.35)',
+                backgroundColor: 'var(--color-status-problem-bg)',
+                color: 'var(--color-status-problem)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                minHeight: '48px',
+              }}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+              <span>Delete Application</span>
+            </button>
+          )}
+
+          {!isApproved && (
+            <button
+              type="button"
+              onClick={() => {
                 setSubmittedApplication(null);
                 setCurrentStep('business');
-              }
-            }}
-            className="btn-secondary"
-            style={{
-              padding: '12px 24px',
-              fontSize: '14px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border-default)',
-              backgroundColor: 'var(--color-surface-panel)',
-              color: 'var(--color-text-secondary)',
-              cursor: 'pointer',
-              minHeight: '48px',
-            }}
-          >
-            Start Another Application
-          </button>
+              }}
+              className="btn-secondary"
+              style={{
+                padding: '12px 24px',
+                fontSize: '14px',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border-default)',
+                backgroundColor: 'var(--color-surface-panel)',
+                color: 'var(--color-text-secondary)',
+                cursor: 'pointer',
+                minHeight: '48px',
+              }}
+            >
+              Edit &amp; Resubmit
+            </button>
+          )}
         </div>
+
+        <DeleteApplicationModal
+          isOpen={showDeleteModal}
+          pharmacyName={appData.name}
+          isDeleting={isDeleting}
+          error={deleteError}
+          onCancel={() => setShowDeleteModal(false)}
+          onConfirm={handleDeleteApplication}
+          titleId="delete-app-modal-title"
+        />
       </div>
     );
   }
@@ -1093,6 +1264,30 @@ export const PharmacyRegisterPage: React.FC = () => {
           );
         })}
       </nav>
+
+      {/* Deletion Success Alert Banner */}
+      {deleteSuccessMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            padding: '14px 18px',
+            backgroundColor: 'var(--color-status-available-bg)',
+            border: '1px solid rgba(24, 115, 75, 0.3)',
+            borderRadius: 'var(--radius-lg)',
+            color: 'var(--color-status-available)',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '14px',
+            fontWeight: 500,
+          }}
+        >
+          <CheckCircle2 size={18} aria-hidden="true" />
+          <span>{deleteSuccessMessage}</span>
+        </div>
+      )}
 
       {/* Server Error Alert Banner */}
       {submitError && (

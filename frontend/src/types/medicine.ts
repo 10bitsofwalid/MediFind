@@ -1,4 +1,5 @@
 // src/types/medicine.ts
+import type { StockStatus } from './pharmacy';
 
 export interface Medicine {
   id: string;
@@ -20,9 +21,39 @@ export interface StockInventoryRecord {
   genericName: string;
   strength: string;
   form: string;
-  status: 'available' | 'low' | 'out' | 'unverified';
+  manufacturer?: string;
+  prescriptionRequired?: boolean;
+  status: StockStatus;
   quantity?: number;
+  price?: number;
+  notes?: string;
   updatedAt: string;
   isStale?: boolean;
 }
 
+export interface AddInventoryMedicinePayload {
+  medicineId?: string;
+  medicineName: string;
+  genericName: string;
+  strength: string;
+  form: string;
+  manufacturer?: string;
+  prescriptionRequired?: boolean;
+  status: StockStatus;
+  quantity?: number;
+  price?: number;
+  notes?: string;
+}
+
+export interface UpdateInventoryMedicinePayload {
+  medicineName?: string;
+  genericName?: string;
+  strength?: string;
+  form?: string;
+  manufacturer?: string;
+  prescriptionRequired?: boolean;
+  status?: StockStatus;
+  quantity?: number;
+  price?: number;
+  notes?: string;
+}

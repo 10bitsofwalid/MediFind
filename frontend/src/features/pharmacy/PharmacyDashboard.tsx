@@ -5,9 +5,11 @@ import type { PharmacyApplicationResponse, Pharmacy, VerificationStatus } from '
 import {
   getPharmacyApplication,
   getPharmacyProfile,
+  deletePharmacyApplication,
   setMockVerificationStatus,
   isMockApiEnabled,
 } from '../../services/pharmacyService';
+import { PHARMACY_STATUS_UPDATED_EVENT } from '../../services/stockReminderService';
 import {
   Building2,
   Clock3,
@@ -28,8 +30,12 @@ import {
   Sliders,
   Copy,
   Check,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { OneTapStockControl } from './OneTapStockControl';
+import { StockReminderSettings } from './StockReminderSettings';
+import { DeleteApplicationModal } from '../../components/DeleteApplicationModal';
 
 export const PharmacyDashboard: React.FC = () => {
   const [application, setApplication] = useState<PharmacyApplicationResponse | null>(null);
@@ -38,6 +44,46 @@ export const PharmacyDashboard: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedEmail, setCopiedEmail] = useState<boolean>(false);
+  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
+  const [showFirstApprovalNotice, setShowFirstApprovalNotice] = useState<boolean>(false);
+  const [approvalCountdown, setApprovalCountdown] = useState<number>(10);
+
+  const syncFirstApprovalNotice = (
+    appRes: PharmacyApplicationResponse | null,
+    profileRes: Pharmacy | null
+  ) => {
+    const resolvedStatus = appRes?.status || profileRes?.status;
+    const entityId = appRes?.applicationId || profileRes?._id;
+    if (!entityId) {
+      setShowFirstApprovalNotice(false);
+      return;
+    }
+
+    const seenKey = `medifind_approval_notice_seen_${entityId}`;
+    if (resolvedStatus === 'verified') {
+      const alreadySeen = localStorage.getItem(seenKey) === 'true';
+      if (!alreadySeen) {
+        setApprovalCountdown(10);
+        setShowFirstApprovalNotice(true);
+      } else {
+        setShowFirstApprovalNotice(false);
+      }
+    } else {
+      localStorage.removeItem(seenKey);
+      setShowFirstApprovalNotice(false);
+    }
+  };
+
+  const dismissFirstApprovalNotice = () => {
+    const entityId = application?.applicationId || pharmacy?._id;
+    if (entityId) {
+      localStorage.setItem(`medifind_approval_notice_seen_${entityId}`, 'true');
+    }
+    setShowFirstApprovalNotice(false);
+  };
 
   const handleCopyEmail = () => {
     navigator.clipboard.writeText('compliance@medifind.dev').then(() => {
@@ -56,6 +102,7 @@ export const PharmacyDashboard: React.FC = () => {
       ]);
       setApplication(appRes);
       setPharmacy(profileRes);
+      syncFirstApprovalNotice(appRes, profileRes);
     } catch {
       setError('Could not retrieve pharmacy verification status from server.');
     } finally {
@@ -74,6 +121,7 @@ export const PharmacyDashboard: React.FC = () => {
         if (isMounted) {
           setApplication(appRes);
           setPharmacy(profileRes);
+          syncFirstApprovalNotice(appRes, profileRes);
           setIsLoading(false);
         }
       })
@@ -89,9 +137,50 @@ export const PharmacyDashboard: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!showFirstApprovalNotice) return;
+    const entityId = application?.applicationId || pharmacy?._id;
+
+    const intervalId = window.setInterval(() => {
+      setApprovalCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    const timeoutId = window.setTimeout(() => {
+      if (entityId) {
+        localStorage.setItem(`medifind_approval_notice_seen_${entityId}`, 'true');
+      }
+      setShowFirstApprovalNotice(false);
+    }, 10000);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [showFirstApprovalNotice, application?.applicationId, pharmacy?._id]);
+
   const handleSimulateStatus = (status: VerificationStatus) => {
     setMockVerificationStatus(status);
+    window.dispatchEvent(new CustomEvent(PHARMACY_STATUS_UPDATED_EVENT));
     fetchStatus();
+  };
+
+  const handleDeleteApplication = async () => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deletePharmacyApplication(application?.applicationId);
+      sessionStorage.removeItem('medifind_pharmacy_form_draft');
+      setShowDeleteModal(false);
+      setApplication(null);
+      setPharmacy(null);
+      setDeleteSuccessMessage('Your submitted pharmacy application has been deleted.');
+    } catch (err: unknown) {
+      setDeleteError(
+        err instanceof Error ? err.message : 'Failed to delete pharmacy application.'
+      );
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (isLoading) {
@@ -120,6 +209,29 @@ export const PharmacyDashboard: React.FC = () => {
   if (!application && !pharmacy) {
     return (
       <div style={{ maxWidth: '640px', margin: '48px auto', padding: '0 16px', textAlign: 'center' }}>
+        {deleteSuccessMessage && (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              padding: '12px 16px',
+              backgroundColor: 'var(--color-status-available-bg)',
+              border: '1px solid rgba(24, 115, 75, 0.3)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--color-status-available)',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              fontSize: '14px',
+              fontWeight: 500,
+            }}
+          >
+            <CheckCircle2 size={16} aria-hidden="true" />
+            <span>{deleteSuccessMessage}</span>
+          </div>
+        )}
         <div
           className="card"
           style={{
@@ -299,6 +411,25 @@ export const PharmacyDashboard: React.FC = () => {
             <h1 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
               {pharmacyName}
             </h1>
+            {currentStatus === 'verified' && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  padding: '3px 10px',
+                  borderRadius: 'var(--radius-full)',
+                  backgroundColor: 'var(--color-status-available-bg)',
+                  color: 'var(--color-status-available)',
+                  border: '1px solid rgba(24, 115, 75, 0.3)',
+                }}
+              >
+                <CheckCircle2 size={13} aria-hidden="true" />
+                <span>Verified &amp; Publicly Listed</span>
+              </span>
+            )}
           </div>
 
           <div style={{ fontSize: '14px', color: 'var(--color-text-secondary)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -457,13 +588,60 @@ export const PharmacyDashboard: React.FC = () => {
                   once your listing is verified.
                 </div>
               </div>
+
+              <div style={{ marginTop: '14px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <Link
+                  to="/pharmacy/register"
+                  className="btn-secondary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--color-border-default)',
+                    backgroundColor: 'var(--color-surface-canvas)',
+                    color: 'var(--color-text-primary)',
+                    textDecoration: 'none',
+                  }}
+                >
+                  <span>View Submitted Application</span>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setShowDeleteModal(true);
+                  }}
+                  className="btn-secondary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid rgba(180, 35, 47, 0.35)',
+                    backgroundColor: 'var(--color-status-problem-bg)',
+                    color: 'var(--color-status-problem)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Trash2 size={14} aria-hidden="true" />
+                  <span>Delete Application</span>
+                </button>
+              </div>
             </div>
           </div>
         </section>
       )}
 
-      {/* STATE 2: VERIFIED & ACTIVE */}
-      {currentStatus === 'verified' && (
+      {/* STATE 2: VERIFIED & ACTIVE (First-Time Approval Notice: 10s limit + Close) */}
+      {currentStatus === 'verified' && showFirstApprovalNotice && (
         <section
           role="region"
           aria-label="Verification status: Verified and Active"
@@ -475,6 +653,7 @@ export const PharmacyDashboard: React.FC = () => {
             padding: '24px',
             boxShadow: 'var(--shadow-sm)',
             marginBottom: '28px',
+            position: 'relative',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
@@ -496,25 +675,75 @@ export const PharmacyDashboard: React.FC = () => {
             </div>
 
             <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                <span
-                  style={{
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    padding: '3px 10px',
-                    borderRadius: 'var(--radius-full)',
-                    backgroundColor: 'var(--color-status-available-bg)',
-                    color: 'var(--color-status-available)',
-                    border: '1px solid rgba(24, 115, 75, 0.3)',
-                    letterSpacing: '0.04em',
-                  }}
-                >
-                  VERIFICATION STATUS: VERIFIED & OFFICIALLY ACTIVE
-                </span>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  marginBottom: '6px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      padding: '3px 10px',
+                      borderRadius: 'var(--radius-full)',
+                      backgroundColor: 'var(--color-status-available-bg)',
+                      color: 'var(--color-status-available)',
+                      border: '1px solid rgba(24, 115, 75, 0.3)',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    VERIFICATION STATUS: VERIFIED &amp; OFFICIALLY ACTIVE
+                  </span>
 
-                <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                  Accredited by DGDA
-                </span>
+                  <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                    Accredited by DGDA
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: 'var(--color-text-secondary)',
+                      backgroundColor: 'var(--color-surface-canvas)',
+                      padding: '3px 8px',
+                      borderRadius: 'var(--radius-full)',
+                      border: '1px solid var(--color-border-default)',
+                    }}
+                    aria-live="polite"
+                  >
+                    Closes in {approvalCountdown}s
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={dismissFirstApprovalNotice}
+                    aria-label="Close verified approval notice"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '4px 10px',
+                      borderRadius: 'var(--radius-full)',
+                      border: '1px solid var(--color-border-default)',
+                      backgroundColor: 'var(--color-surface-canvas)',
+                      color: 'var(--color-text-secondary)',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X size={13} aria-hidden="true" />
+                    <span>Close</span>
+                  </button>
+                </div>
               </div>
 
               <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-text-primary)', margin: '4px 0 8px' }}>
@@ -651,24 +880,51 @@ export const PharmacyDashboard: React.FC = () => {
                 </span>
               </div>
 
-              {/* Correction Action Link */}
-              <Link
-                to="/pharmacy/register"
-                className="btn-primary"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '10px 20px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                }}
-              >
-                <span>Correct and Resubmit Application</span>
-                <ChevronRight size={16} aria-hidden="true" />
-              </Link>
+              {/* Correction & Delete Actions */}
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <Link
+                  to="/pharmacy/register"
+                  className="btn-primary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 20px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    borderRadius: 'var(--radius-md)',
+                    textDecoration: 'none',
+                  }}
+                >
+                  <span>Correct and Resubmit Application</span>
+                  <ChevronRight size={16} aria-hidden="true" />
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setShowDeleteModal(true);
+                  }}
+                  className="btn-secondary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '10px 16px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid rgba(180, 35, 47, 0.35)',
+                    backgroundColor: 'var(--color-status-problem-bg)',
+                    color: 'var(--color-status-problem)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                  <span>Delete Application</span>
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -904,28 +1160,61 @@ export const PharmacyDashboard: React.FC = () => {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div
-                style={{
-                  padding: '16px 20px',
-                  backgroundColor: 'var(--color-status-available-bg)',
-                  borderRadius: 'var(--radius-lg)',
-                  border: '1px solid rgba(24, 115, 75, 0.2)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '12px',
-                }}
-              >
-                <div>
-                  <strong style={{ fontSize: '15px', color: 'var(--color-status-available)', display: 'block', marginBottom: '2px' }}>
-                    ✓ Inventory Operations Unlocked
-                  </strong>
-                  <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: 0 }}>
-                    Select a status pill below for any medicine to report updated availability to patients in real-time.
-                  </p>
+              {showFirstApprovalNotice && (
+                <div
+                  style={{
+                    padding: '16px 20px',
+                    backgroundColor: 'var(--color-status-available-bg)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: '1px solid rgba(24, 115, 75, 0.2)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: '15px', color: 'var(--color-status-available)', display: 'block', marginBottom: '2px' }}>
+                      ✓ Inventory Operations Unlocked
+                    </strong>
+                    <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: 0 }}>
+                      Select a status pill below for any medicine to report updated availability to patients in real-time.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: 'var(--color-status-available)',
+                      }}
+                    >
+                      {approvalCountdown}s
+                    </span>
+                    <button
+                      type="button"
+                      onClick={dismissFirstApprovalNotice}
+                      aria-label="Close inventory unlocked notice"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: 'var(--radius-full)',
+                        border: '1px solid rgba(24, 115, 75, 0.3)',
+                        backgroundColor: 'var(--color-surface-panel)',
+                        color: 'var(--color-status-available)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* One-Tap Stock Control Component (resolves TECH-04 & UI-01) */}
               <OneTapStockControl
@@ -934,6 +1223,9 @@ export const PharmacyDashboard: React.FC = () => {
             </div>
           )}
         </section>
+
+        {/* SECTION 2: STOCK UPDATE REMINDER NOTIFICATIONS (Verified Pharmacies) */}
+        {currentStatus === 'verified' && <StockReminderSettings />}
 
         {/* SECTION 2: PHARMACY PROFILE & SCHEDULE OVERVIEW */}
         <section
@@ -1054,6 +1346,16 @@ export const PharmacyDashboard: React.FC = () => {
           </div>
         </section>
       </div>
+
+      <DeleteApplicationModal
+        isOpen={showDeleteModal}
+        pharmacyName={pharmacyName}
+        isDeleting={isDeleting}
+        error={deleteError}
+        onCancel={() => setShowDeleteModal(false)}
+        onConfirm={handleDeleteApplication}
+        titleId="dashboard-delete-modal-title"
+      />
     </div>
   );
 };

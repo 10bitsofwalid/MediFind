@@ -130,6 +130,7 @@ export const adminService = {
       };
 
       localStorage.setItem(targetKey, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('medifind:pharmacy-status-updated'));
       return updated;
     }
 
@@ -198,6 +199,68 @@ export const adminService = {
         throw new Error(err.response.data.error.message, { cause: err });
       }
       throw new Error('Failed to add medicine to catalogue.', { cause: err });
+    }
+  },
+
+  async updateCatalogueMedicine(
+    medicineId: string,
+    payload: Partial<CreateMedicinePayload>
+  ): Promise<Medicine> {
+    if (payload.name !== undefined && !payload.name.trim()) {
+      throw new Error('Medicine name cannot be empty.');
+    }
+    if (payload.genericName !== undefined && !payload.genericName.trim()) {
+      throw new Error('Generic name cannot be empty.');
+    }
+    if (payload.strength !== undefined && !payload.strength.trim()) {
+      throw new Error('Strength cannot be empty.');
+    }
+    if (payload.form !== undefined && !payload.form.trim()) {
+      throw new Error('Dosage form cannot be empty.');
+    }
+
+    if (isMockApiEnabled()) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const current = getStoredCatalogue();
+      const idx = current.findIndex((m) => m.id === medicineId);
+      if (idx === -1) {
+        throw new Error('Medicine record not found.');
+      }
+
+      const existing = current[idx];
+      const updated: Medicine = {
+        ...existing,
+        name: payload.name !== undefined ? payload.name.trim() : existing.name,
+        genericName:
+          payload.genericName !== undefined ? payload.genericName.trim() : existing.genericName,
+        form: payload.form !== undefined ? payload.form.trim() : existing.form,
+        strength: payload.strength !== undefined ? payload.strength.trim() : existing.strength,
+        manufacturer:
+          payload.manufacturer !== undefined
+            ? payload.manufacturer.trim() || undefined
+            : existing.manufacturer,
+        description:
+          payload.description !== undefined
+            ? payload.description.trim() || undefined
+            : existing.description,
+        prescriptionRequired:
+          payload.prescriptionRequired !== undefined
+            ? payload.prescriptionRequired
+            : existing.prescriptionRequired,
+      };
+      current[idx] = updated;
+      localStorage.setItem(MOCK_CATALOGUE_STORAGE_KEY, JSON.stringify(current));
+      return updated;
+    }
+
+    try {
+      const res = await api.patch(`/admin/medicines/${medicineId}`, payload);
+      return res.data?.data || res.data;
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.data?.error?.message) {
+        throw new Error(err.response.data.error.message, { cause: err });
+      }
+      throw new Error('Failed to update medicine entry.', { cause: err });
     }
   },
 
