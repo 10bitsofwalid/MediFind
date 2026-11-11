@@ -4,6 +4,7 @@ import axios from 'axios';
 import type { Medicine } from '../types/medicine';
 import type { PharmacyApplicationResponse, VerificationStatus } from '../types/pharmacy';
 import { isMockApiEnabled } from './pharmacyService';
+import { PHARMACY_STATUS_UPDATED_EVENT } from './stockReminderService';
 
 const MOCK_CATALOGUE_STORAGE_KEY = 'medifind_mock_catalogue';
 const MOCK_APP_PREFIX = 'medifind_mock_pharmacy_application';
@@ -13,7 +14,7 @@ export interface AdminPharmacyApplicationItem {
   application: PharmacyApplicationResponse;
 }
 
-export interface CreateMedicinePayload {
+interface CreateMedicinePayload {
   name: string;
   genericName: string;
   form: string;
@@ -130,7 +131,7 @@ export const adminService = {
       };
 
       localStorage.setItem(targetKey, JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent('medifind:pharmacy-status-updated'));
+      window.dispatchEvent(new CustomEvent(PHARMACY_STATUS_UPDATED_EVENT));
       return updated;
     }
 

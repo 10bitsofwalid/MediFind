@@ -10,6 +10,7 @@ import type {
   DayOfWeek,
   VerificationStatus,
 } from '../types/pharmacy';
+import { PHARMACY_STATUS_UPDATED_EVENT } from './stockReminderService';
 
 const DEFAULT_MOCK_STORAGE_KEY = 'medifind_mock_pharmacy_application';
 
@@ -17,7 +18,7 @@ const DEFAULT_MOCK_STORAGE_KEY = 'medifind_mock_pharmacy_application';
  * Derives a user-scoped mock storage key so different logged-in sessions
  * maintain their own independent application and verification states.
  */
-export function getMockStorageKey(): string {
+function getMockStorageKey(): string {
   try {
     const rawUser = localStorage.getItem('user');
     if (rawUser) {
@@ -50,7 +51,6 @@ export class PharmacyServiceError extends Error {
   code?: string;
   status?: number;
   fields?: Record<string, string>;
-  response?: { status: number; data: unknown };
 
   constructor(message: string, code?: string, status?: number, fields?: Record<string, string>) {
     super(message);
@@ -65,7 +65,7 @@ export class PharmacyServiceError extends Error {
  * Validates that an object conforms to PharmacyApplicationResponse.
  * Protects against HTML strings returned by SPA fallback when APIs are offline.
  */
-export function isValidApplicationResponse(data: unknown): data is PharmacyApplicationResponse {
+function isValidApplicationResponse(data: unknown): data is PharmacyApplicationResponse {
   if (typeof data !== 'object' || data === null) return false;
   const obj = data as Record<string, unknown>;
   if (!('applicationId' in obj) || !('data' in obj) || !('status' in obj)) return false;
@@ -226,23 +226,12 @@ export async function submitPharmacyApplication(
 
     // Simulate server-side duplicate license check
     if (payload.licenseNo.trim().toUpperCase() === 'DUPLICATE-TEST') {
-      const error = new PharmacyServiceError(
+      throw new PharmacyServiceError(
         'License number is already registered.',
         'DUPLICATE_LICENSE',
         409,
         { licenseNo: 'License number already registered.' }
       );
-      error.response = {
-        status: 409,
-        data: {
-          error: {
-            code: 'DUPLICATE_LICENSE',
-            message: 'A pharmacy with this license number is already registered or undergoing review.',
-            fields: { licenseNo: 'License number already registered.' },
-          },
-        },
-      };
-      throw error;
     }
 
     const applicationResponse: PharmacyApplicationResponse = {
@@ -581,48 +570,6 @@ export async function updatePharmacyProfile(
 }
 
 /**
- * Updates opening hours schedule on the server.
- * Endpoint: PUT /owner/pharmacy/opening-hours
- */
-export async function updateOpeningHours(
-  hours: WeeklyHours
-): Promise<{ openingHours: string; structuredHours: WeeklyHours }> {
-  const err = validateWeeklyHours(hours);
-  if (err) {
-    throw new PharmacyServiceError(err, 'VALIDATION_ERROR', 422, { openingHours: err });
-  }
-
-  const formatted = formatWeeklyHours(hours);
-
-  if (isMockApiEnabled()) {
-    await updatePharmacyProfile({
-      structuredHours: hours,
-      openingHours: formatted,
-    });
-    return { openingHours: formatted, structuredHours: hours };
-  }
-
-  try {
-    const res = await api.put('/owner/pharmacy/opening-hours', {
-      structuredHours: hours,
-      openingHours: formatted,
-    });
-    return res.data?.data || res.data || { openingHours: formatted, structuredHours: hours };
-  } catch (err: unknown) {
-    if (axios.isAxiosError(err) && err.response?.data?.error) {
-      const errorData = err.response.data.error;
-      throw new PharmacyServiceError(
-        errorData.message || 'Failed to update operating hours schedule.',
-        errorData.code,
-        err.response.status,
-        errorData.fields
-      );
-    }
-    throw err;
-  }
-}
-
-/**
  * Changes mock verification status in development mode to test
  * Pending, Verified, Rejected, and Suspended UI flows for a submitted application.
  */
@@ -647,7 +594,7 @@ export function setMockVerificationStatus(
   app.nextStep = nextStep;
 
   localStorage.setItem(getMockStorageKey(), JSON.stringify(app));
-  window.dispatchEvent(new CustomEvent('medifind:pharmacy-status-updated'));
+  window.dispatchEvent(new CustomEvent(PHARMACY_STATUS_UPDATED_EVENT));
   return app;
 }
 
@@ -729,7 +676,7 @@ export async function deletePharmacyApplication(applicationId?: string): Promise
 /**
  * Clears mock application storage (for testing purposes).
  */
-export function clearMockApplication(): void {
+function clearMockApplication(): void {
   localStorage.removeItem(getMockStorageKey());
   localStorage.removeItem(DEFAULT_MOCK_STORAGE_KEY);
 }

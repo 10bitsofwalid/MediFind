@@ -9,7 +9,6 @@ import {
   setMockVerificationStatus,
   isMockApiEnabled,
 } from '../../services/pharmacyService';
-import { PHARMACY_STATUS_UPDATED_EVENT } from '../../services/stockReminderService';
 import {
   Building2,
   Clock3,
@@ -86,10 +85,13 @@ export const PharmacyDashboard: React.FC = () => {
   };
 
   const handleCopyEmail = () => {
-    navigator.clipboard.writeText('compliance@medifind.dev').then(() => {
-      setCopiedEmail(true);
-      setTimeout(() => setCopiedEmail(false), 2000);
-    });
+    navigator.clipboard
+      ?.writeText('compliance@medifind.dev')
+      .then(() => {
+        setCopiedEmail(true);
+        setTimeout(() => setCopiedEmail(false), 2000);
+      })
+      .catch(() => {});
   };
 
   const fetchStatus = async (showRefreshingIndicator = false) => {
@@ -160,7 +162,6 @@ export const PharmacyDashboard: React.FC = () => {
 
   const handleSimulateStatus = (status: VerificationStatus) => {
     setMockVerificationStatus(status);
-    window.dispatchEvent(new CustomEvent(PHARMACY_STATUS_UPDATED_EVENT));
     fetchStatus();
   };
 

@@ -158,16 +158,4 @@ export const authService = {
       api.post('/auth/logout').catch(() => {});
     }
   },
-
-  setDevUser(user: User | null): void {
-    if (user) {
-      localStorage.setItem(USER_KEY, JSON.stringify(user));
-      if (!localStorage.getItem(TOKEN_KEY)) {
-        localStorage.setItem(TOKEN_KEY, `local_session_${user.id}`);
-      }
-    } else {
-      localStorage.removeItem(USER_KEY);
-      localStorage.removeItem(TOKEN_KEY);
-    }
-  },
 };

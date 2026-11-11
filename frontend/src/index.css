@@ -36,37 +36,6 @@
   --shadow-sm: 0 1px 3px rgba(23, 43, 58, 0.05), 0 1px 2px rgba(23, 43, 58, 0.04);
   --shadow-md: 0 4px 14px rgba(23, 43, 58, 0.08), 0 2px 6px rgba(23, 43, 58, 0.04);
   --shadow-lg: 0 12px 28px rgba(23, 43, 58, 0.12), 0 4px 10px rgba(23, 43, 58, 0.06);
-
-  /* Spacing Base */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-}
-
-/* Opt-in Dark Appearance Palette (requires explicit .theme-dark class) */
-.theme-dark {
-  --color-surface-canvas: #0F1720;
-  --color-surface-panel: #172430;
-  --color-text-primary: #F0F4F8;
-  --color-text-secondary: #94A3B8;
-  --color-border-default: #2A3C4D;
-  --color-border-focus: #38BDF8;
-  --color-action-primary: #1F8FA8;
-  --color-action-hover: #176B87;
-  --color-action-subtle: #162C38;
-  --color-status-available: #34D399;
-  --color-status-available-bg: #064E3B;
-  --color-status-caution: #FBBF24;
-  --color-status-caution-bg: #451A03;
-  --color-status-problem: #F87171;
-  --color-status-problem-bg: #450A0A;
-  --color-status-neutral: #94A3B8;
-  --color-status-neutral-bg: #1E293B;
-  --color-focus: #38BDF8;
 }
 
 *, *::before, *::after {
@@ -164,22 +133,6 @@ a:focus-visible {
     grid-template-columns: 1fr !important;
     gap: 8px !important;
   }
-}
-
-/* Brand Logo Icon (resolves UI-10) */
-.brand-logo-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-md);
-  background-color: var(--color-action-primary);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 18px;
-  box-shadow: var(--shadow-sm);
-  flex-shrink: 0;
 }
 
 /* Leaflet Map overrides for smooth UI */

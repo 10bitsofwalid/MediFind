@@ -148,6 +148,9 @@ export const PharmacyProfilePage: React.FC = () => {
   // Check if form has unsaved modifications
   const isDirty = useMemo(() => {
     if (!serverProfile) return false;
+    const savedHoursFormatted = formatWeeklyHours(
+      serverProfile.structuredHours ?? createDefaultWeeklyHours()
+    );
     return (
       name !== (serverProfile.name || '') ||
       ownerName !== (serverProfile.ownerName || '') ||
@@ -158,7 +161,8 @@ export const PharmacyProfilePage: React.FC = () => {
       city !== (serverProfile.city || '') ||
       postalCode !== (serverProfile.postalCode || '') ||
       latitude !== (serverProfile.latitude ?? serverProfile.location?.coordinates[1] ?? DEFAULT_LATITUDE) ||
-      longitude !== (serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? DEFAULT_LONGITUDE)
+      longitude !== (serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? DEFAULT_LONGITUDE) ||
+      formatWeeklyHours(weeklyHours) !== savedHoursFormatted
     );
   }, [
     serverProfile,
@@ -172,6 +176,7 @@ export const PharmacyProfilePage: React.FC = () => {
     postalCode,
     latitude,
     longitude,
+    weeklyHours,
   ]);
 
   // Client-side field validator
@@ -1276,10 +1281,10 @@ export const PharmacyProfilePage: React.FC = () => {
                   <div style={{ marginLeft: 'auto' }}>
                     <a
                       href={`https://www.openstreetmap.org/?mlat=${
-                        serverProfile.latitude ?? serverProfile.location?.coordinates[1]
-                      }&mlon=${serverProfile.longitude ?? serverProfile.location?.coordinates[0]}#map=16/${
-                        serverProfile.latitude ?? serverProfile.location?.coordinates[1]
-                      }/${serverProfile.longitude ?? serverProfile.location?.coordinates[0]}`}
+                        serverProfile.latitude ?? serverProfile.location?.coordinates[1] ?? DEFAULT_LATITUDE
+                      }&mlon=${serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? DEFAULT_LONGITUDE}#map=16/${
+                        serverProfile.latitude ?? serverProfile.location?.coordinates[1] ?? DEFAULT_LATITUDE
+                      }/${serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? DEFAULT_LONGITUDE}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{

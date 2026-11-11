@@ -109,7 +109,6 @@ export const CustomerSearchBar: React.FC<CustomerSearchBarProps> = ({
                 fontSize: '14px',
                 color: 'var(--color-text-primary)',
                 backgroundColor: 'var(--color-surface-canvas)',
-                outline: 'none',
                 boxSizing: 'border-box',
               }}
             />
@@ -182,7 +181,6 @@ export const CustomerSearchBar: React.FC<CustomerSearchBarProps> = ({
                 fontSize: '14px',
                 color: 'var(--color-text-primary)',
                 backgroundColor: 'var(--color-surface-canvas)',
-                outline: 'none',
                 boxSizing: 'border-box',
               }}
             />
@@ -250,7 +248,7 @@ export const CustomerSearchBar: React.FC<CustomerSearchBarProps> = ({
         <span>
           Browsing is available without an account. Sign in is only required to reserve or set an alert.
         </span>
-        <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+        <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
           Mobile-first &bull; 360px optimized
         </span>
       </div>

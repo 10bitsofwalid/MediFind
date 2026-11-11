@@ -13,6 +13,23 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
+async function fetchSummaryCounts() {
+  const [apps, meds] = await Promise.all([
+    adminService.getPharmacyApplications(),
+    adminService.getCatalogueMedicines(),
+  ]);
+
+  return {
+    pending: apps.filter((item) => item.application.status === 'pending').length,
+    verified: apps.filter((item) => item.application.status === 'verified').length,
+    flagged: apps.filter(
+      (item) => item.application.status === 'rejected' || item.application.status === 'suspended'
+    ).length,
+    catalogueActive: meds.filter((m) => m.active).length,
+    catalogueTotal: meds.length,
+  };
+}
+
 export const AdminDashboard: React.FC = () => {
   const [counts, setCounts] = useState({
     pending: 0,
@@ -26,25 +43,7 @@ export const AdminDashboard: React.FC = () => {
   const loadSummary = async () => {
     setIsLoading(true);
     try {
-      const [apps, meds] = await Promise.all([
-        adminService.getPharmacyApplications(),
-        adminService.getCatalogueMedicines(),
-      ]);
-
-      const pending = apps.filter((item) => item.application.status === 'pending').length;
-      const verified = apps.filter((item) => item.application.status === 'verified').length;
-      const flagged = apps.filter(
-        (item) => item.application.status === 'rejected' || item.application.status === 'suspended'
-      ).length;
-      const catalogueActive = meds.filter((m) => m.active).length;
-
-      setCounts({
-        pending,
-        verified,
-        flagged,
-        catalogueActive,
-        catalogueTotal: meds.length,
-      });
+      setCounts(await fetchSummaryCounts());
     } finally {
       setIsLoading(false);
     }
@@ -52,22 +51,12 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     let isMounted = true;
-    Promise.all([
-      adminService.getPharmacyApplications(),
-      adminService.getCatalogueMedicines(),
-    ])
-      .then(([apps, meds]) => {
-        if (!isMounted) return;
-        setCounts({
-          pending: apps.filter((item) => item.application.status === 'pending').length,
-          verified: apps.filter((item) => item.application.status === 'verified').length,
-          flagged: apps.filter(
-            (item) => item.application.status === 'rejected' || item.application.status === 'suspended'
-          ).length,
-          catalogueActive: meds.filter((m) => m.active).length,
-          catalogueTotal: meds.length,
-        });
-        setIsLoading(false);
+    fetchSummaryCounts()
+      .then((nextCounts) => {
+        if (isMounted) {
+          setCounts(nextCounts);
+          setIsLoading(false);
+        }
       })
       .catch(() => {
         if (isMounted) setIsLoading(false);

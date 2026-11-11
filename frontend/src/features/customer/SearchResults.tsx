@@ -10,10 +10,11 @@ export const SearchResults: React.FC = () => {
   const query = searchParams.get('q') || '';
   const area = searchParams.get('area') || '';
 
-  const handleSearch = ({ query: newQuery, area: newArea }: { query: string; area: string }) => {
+  const handleSearch = ({ query: newQuery, area: newArea, useLocation }: { query: string; area: string; useLocation: boolean }) => {
     const nextParams: Record<string, string> = {};
     if (newQuery) nextParams.q = newQuery;
     if (newArea) nextParams.area = newArea;
+    if (useLocation) nextParams.geo = '1';
     setSearchParams(nextParams);
   };
 
@@ -60,6 +61,7 @@ export const SearchResults: React.FC = () => {
       </div>
 
       <CustomerSearchBar
+        key={`${query}_${area}`}
         initialQuery={query}
         initialArea={area}
         onSearch={handleSearch}
@@ -85,7 +87,11 @@ export const SearchResults: React.FC = () => {
         <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', maxWidth: '480px', margin: '0 auto 16px auto' }}>
           Database connection and live availability search will display verified pharmacy stock once connected.
         </p>
-        <Link to="/" className="btn-primary" style={{ display: 'inline-block', padding: '8px 16px', borderRadius: 'var(--radius-md)' }}>
+        <Link
+          to="/"
+          className="btn-primary"
+          style={{ display: 'inline-block', padding: '8px 16px', borderRadius: 'var(--radius-md)', textDecoration: 'none' }}
+        >
           Return to Guest Discovery
         </Link>
       </div>

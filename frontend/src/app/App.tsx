@@ -14,7 +14,6 @@ export function App() {
       <BrowserRouter>
         <AuthProvider>
           <div
-            className="app-layout"
             style={{
               minHeight: '100vh',
               display: 'flex',

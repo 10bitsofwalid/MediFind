@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin, Navigation, Compass, AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react';
+import { MapPin, Navigation, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
 import { DEFAULT_LATITUDE, DEFAULT_LONGITUDE, PRESET_LOCATIONS } from '../config/constants';
 
@@ -55,7 +55,6 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
   const [isDetecting, setIsDetecting] = useState<boolean>(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [geoSuccess, setGeoSuccess] = useState<boolean>(false);
-  const [mapRenderError, setMapRenderError] = useState<boolean>(false);
   const markerRef = useRef<L.Marker>(null);
 
   // Safely construct custom SVG pin icon inside useMemo to avoid top-level evaluation issues
@@ -277,72 +276,46 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
 
       {/* Interactive Leaflet Map with ErrorBoundary */}
       <ErrorBoundary fallbackTitle="Map component unavailable">
-        {!mapRenderError ? (
-          <div
-            style={{
-              width: '100%',
-              height: '280px',
-              borderRadius: 'var(--radius-lg)',
-              overflow: 'hidden',
-              border: error
-                ? '1px solid var(--color-status-problem)'
-                : '1px solid var(--color-border-default)',
-              position: 'relative',
-              zIndex: 1,
-            }}
-            aria-label="Interactive map for selecting pharmacy location"
+        <div
+          style={{
+            width: '100%',
+            height: '280px',
+            borderRadius: 'var(--radius-lg)',
+            overflow: 'hidden',
+            border: error
+              ? '1px solid var(--color-status-problem)'
+              : '1px solid var(--color-border-default)',
+            position: 'relative',
+            zIndex: 1,
+          }}
+          aria-label="Interactive map for selecting pharmacy location"
+        >
+          <MapContainer
+            center={mapCenter}
+            zoom={15}
+            scrollWheelZoom={false}
+            style={{ width: '100%', height: '100%' }}
           >
-            <MapContainer
-              center={mapCenter}
-              zoom={15}
-              scrollWheelZoom={false}
-              style={{ width: '100%', height: '100%' }}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                maxZoom={19}
-              />
-              <Marker
-                position={mapCenter}
-                draggable={!disabled}
-                eventHandlers={{ dragend: handleDragEnd }}
-                ref={markerRef}
-                icon={pinIcon}
-              />
-              <MapRecenter lat={mapCenter[0]} lng={mapCenter[1]} />
-              <MapClickHandler
-                onLocationSelect={(lat, lng) => {
-                  if (!disabled) onChange(lat, lng);
-                }}
-              />
-            </MapContainer>
-          </div>
-        ) : (
-          <div
-            style={{
-              padding: '24px',
-              textAlign: 'center',
-              backgroundColor: 'var(--color-surface-canvas)',
-              borderRadius: 'var(--radius-lg)',
-              border: '1px dashed var(--color-border-default)',
-              color: 'var(--color-text-secondary)',
-            }}
-          >
-            <Compass size={32} style={{ margin: '0 auto 8px', color: 'var(--color-text-secondary)' }} aria-hidden="true" />
-            <p style={{ fontSize: '14px', marginBottom: '8px' }}>
-              Map view unavailable. You can enter precise latitude and longitude directly below.
-            </p>
-            <button
-              type="button"
-              onClick={() => setMapRenderError(false)}
-              className="btn-secondary"
-              style={{ fontSize: '12px', padding: '6px 12px' }}
-            >
-              <RotateCcw size={13} style={{ marginRight: '4px' }} aria-hidden="true" /> Retry Map
-            </button>
-          </div>
-        )}
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              maxZoom={19}
+            />
+            <Marker
+              position={mapCenter}
+              draggable={!disabled}
+              eventHandlers={{ dragend: handleDragEnd }}
+              ref={markerRef}
+              icon={pinIcon}
+            />
+            <MapRecenter lat={mapCenter[0]} lng={mapCenter[1]} />
+            <MapClickHandler
+              onLocationSelect={(lat, lng) => {
+                if (!disabled) onChange(lat, lng);
+              }}
+            />
+          </MapContainer>
+        </div>
       </ErrorBoundary>
 
       {/* Manual Coordinate Inputs for Precision & Accessibility */}

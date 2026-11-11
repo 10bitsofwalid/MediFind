@@ -14,16 +14,11 @@ import {
 } from '../services/stockReminderService';
 import { BellRing, Clock, X, ArrowRight, Settings2 } from 'lucide-react';
 
-export const PharmacyStockReminderManager: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+const ActiveStockReminderManager: React.FC<{ userId: string }> = ({ userId }) => {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<StockReminderNotification[]>([]);
 
   const evaluateReminders = useCallback(async () => {
-    if (!isAuthenticated || !user || user.role !== 'PHARMACY') {
-      return;
-    }
-
     try {
       const [app, profile] = await Promise.all([
         getPharmacyApplication().catch(() => null),
@@ -32,7 +27,7 @@ export const PharmacyStockReminderManager: React.FC = () => {
       const isVerified = app?.status === 'verified' || profile?.status === 'verified';
       if (!isVerified) return;
 
-      const due = checkAndTriggerDueReminders(user.id, true);
+      const due = checkAndTriggerDueReminders(userId, true);
       if (due.length > 0) {
         setNotifications((prev) => {
           const existingIds = new Set(prev.map((n) => n.id));
@@ -43,13 +38,9 @@ export const PharmacyStockReminderManager: React.FC = () => {
     } catch {
       // ignore background reminder check errors
     }
-  }, [isAuthenticated, user]);
+  }, [userId]);
 
   useEffect(() => {
-    if (!isAuthenticated || !user || user.role !== 'PHARMACY') {
-      return;
-    }
-
     // Defer initial check asynchronously so setState is never called synchronously in effect body
     const initialTimer = window.setTimeout(() => {
       void evaluateReminders();
@@ -90,9 +81,9 @@ export const PharmacyStockReminderManager: React.FC = () => {
       window.removeEventListener(PHARMACY_STATUS_UPDATED_EVENT, handlePrefsOrStatusUpdate);
       window.removeEventListener(TEST_REMINDER_EVENT, handleTestReminder);
     };
-  }, [isAuthenticated, user, evaluateReminders]);
+  }, [evaluateReminders]);
 
-  if (!isAuthenticated || !user || user.role !== 'PHARMACY' || notifications.length === 0) {
+  if (notifications.length === 0) {
     return null;
   }
 
@@ -263,5 +254,13 @@ export const PharmacyStockReminderManager: React.FC = () => {
       })}
     </div>
   );
+};
+
+export const PharmacyStockReminderManager: React.FC = () => {
+  const { user, isAuthenticated } = useAuth();
+  if (!isAuthenticated || !user || user.role !== 'PHARMACY') {
+    return null;
+  }
+  return <ActiveStockReminderManager key={user.id} userId={user.id} />;
 };
 

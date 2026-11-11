@@ -104,22 +104,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setToken(null);
   };
 
-  const switchRole = (newRole: Role) => {
-    if (!user) return;
-    const updatedUser: User = {
-      ...user,
-      role: newRole,
-    };
-    setUser(updatedUser);
-    authService.setDevUser(updatedUser);
-    setSelectedUserType(newRole);
-    try {
-      sessionStorage.setItem(USER_TYPE_STORAGE_KEY, newRole);
-    } catch {
-      // ignore storage failure
-    }
-  };
-
   return (
     <AuthContext.Provider
       value={{
@@ -135,7 +119,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login,
         register,
         logout,
-        switchRole,
       }}
     >
       {children}

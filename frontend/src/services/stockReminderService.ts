@@ -24,7 +24,7 @@ export const TEST_REMINDER_EVENT = 'medifind:test-stock-reminder';
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-export function getTodayDateString(): string {
+function getTodayDateString(): string {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');

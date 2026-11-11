@@ -1187,7 +1187,7 @@ export const PharmacyRegisterPage: React.FC = () => {
               style={{ accentColor: 'var(--color-action-primary)' }}
             />
             <span style={{ fontWeight: 500 }}>
-              {useDevAdapter ? 'Development Adapter (Mock)' : 'Live API (/api/v1)'}
+              {useDevAdapter ? 'Development Adapter (Mock)' : 'Live API (/api)'}
             </span>
           </label>
         </div>

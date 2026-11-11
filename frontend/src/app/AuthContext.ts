@@ -16,7 +16,6 @@ export interface AuthContextType {
   login: (email: string, password?: string, expectedRole?: Role) => Promise<User>;
   register: (payload: RegisterPayload) => Promise<User>;
   logout: () => void;
-  switchRole: (role: Role) => void;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
