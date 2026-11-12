@@ -302,6 +302,8 @@ export const PharmacyDashboard: React.FC = () => {
   const phoneString = pharmacy?.phone || application?.data?.phone || '';
   const emailString = pharmacy?.email || application?.data?.email || '';
 
+  const resolvedPharmacyId = pharmacy?._id || pharmacy?.id || application?.pharmacyId || '';
+
   // Extract decision reason and next step when provided by the API
   const decisionReason =
     application?.decisionReason ||
@@ -1112,14 +1114,35 @@ export const PharmacyDashboard: React.FC = () => {
                 id="inventory-section-heading"
                 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 4px' }}
               >
-                Medicine Inventory & Availability Reports
+                Medicine Inventory &amp; Availability Reports
               </h2>
               <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
                 Report stock levels (Available, Low stock, Out of stock) to patients
               </span>
             </div>
 
-            {currentStatus !== 'verified' && (
+            {currentStatus === 'verified' ? (
+              <Link
+                to="/pharmacy/inventory"
+                className="btn-secondary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border-default)',
+                  backgroundColor: 'var(--color-surface-canvas)',
+                  color: 'var(--color-action-primary)',
+                  textDecoration: 'none',
+                }}
+              >
+                <span>Open Full Workbench</span>
+                <ChevronRight size={14} aria-hidden="true" />
+              </Link>
+            ) : (
               <span
                 style={{
                   display: 'inline-flex',
@@ -1218,9 +1241,22 @@ export const PharmacyDashboard: React.FC = () => {
               )}
 
               {/* One-Tap Stock Control Component (resolves TECH-04 & UI-01) */}
-              <OneTapStockControl
-                pharmacyId={pharmacy?._id || application?.pharmacyId || 'ph_default'}
-              />
+              {resolvedPharmacyId ? (
+                <OneTapStockControl pharmacyId={resolvedPharmacyId} pharmacyName={pharmacyName} />
+              ) : (
+                <div
+                  role="alert"
+                  style={{
+                    padding: '16px',
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: 'var(--color-status-problem-bg)',
+                    color: 'var(--color-status-problem)',
+                    fontSize: '13px',
+                  }}
+                >
+                  Pharmacy identifier could not be resolved from your session. Please refresh status or sign in again.
+                </div>
+              )}
             </div>
           )}
         </section>

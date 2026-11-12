@@ -76,10 +76,10 @@ export const AvailabilityStatus: React.FC<AvailabilityStatusProps> = ({
     >
       {showIcon && <IconComponent size={isSmall ? 13 : 15} aria-hidden={true} />}
       <span>{config.label}</span>
-      {typeof quantity === 'number' && quantity > 0 && (
+      {typeof quantity === 'number' && quantity >= 0 && (
         <span
           style={{
-            opacity: 0.85,
+            opacity: 0.88,
             fontSize: isSmall ? '11px' : '12px',
             fontWeight: 500,
             borderLeft: `1px solid ${config.border}`,

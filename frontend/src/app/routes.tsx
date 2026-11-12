@@ -11,6 +11,9 @@ const PharmacyRegisterPage = lazy(() =>
 const PharmacyDashboard = lazy(() =>
   import('../features/pharmacy/PharmacyDashboard').then((m) => ({ default: m.PharmacyDashboard }))
 );
+const PharmacyInventoryPage = lazy(() =>
+  import('../features/pharmacy/PharmacyInventoryPage').then((m) => ({ default: m.PharmacyInventoryPage }))
+);
 const PharmacyProfilePage = lazy(() =>
   import('../features/pharmacy/PharmacyProfilePage').then((m) => ({ default: m.PharmacyProfilePage }))
 );
@@ -139,6 +142,14 @@ export const AppRoutes: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['PHARMACY']}>
               <PharmacyDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/pharmacy/inventory"
+          element={
+            <ProtectedRoute allowedRoles={['PHARMACY']}>
+              <PharmacyInventoryPage />
             </ProtectedRoute>
           }
         />

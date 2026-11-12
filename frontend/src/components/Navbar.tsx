@@ -40,6 +40,7 @@ export const Navbar: React.FC = () => {
       if (user?.role === 'PHARMACY') {
         return [
           { to: '/pharmacy/dashboard', label: 'Owner Workspace', icon: LayoutDashboard },
+          { to: '/pharmacy/inventory', label: 'Inventory', icon: Pill },
           { to: '/pharmacy/profile', label: 'Pharmacy Profile', icon: Building2 },
           { to: '/pharmacy/register', label: 'Onboarding Application', icon: PlusCircle },
         ];

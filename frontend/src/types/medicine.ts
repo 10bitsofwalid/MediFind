@@ -53,7 +53,18 @@ export interface UpdateInventoryMedicinePayload {
   manufacturer?: string;
   prescriptionRequired?: boolean;
   status?: StockStatus;
-  quantity?: number;
-  price?: number;
+  quantity?: number | null;
+  price?: number | null;
   notes?: string;
+}
+
+export type InventoryStatusFilter = 'all' | StockStatus;
+export type InventoryFreshnessFilter = 'all' | 'fresh' | 'stale';
+export type InventorySortOption = 'updated_desc' | 'oldest_first' | 'name_asc';
+
+export interface StockInventoryQuery {
+  q?: string;
+  status?: StockStatus;
+  freshness?: 'fresh' | 'stale';
+  sort?: InventorySortOption;
 }
