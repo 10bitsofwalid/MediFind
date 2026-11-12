@@ -9,16 +9,19 @@ import type {
   InventoryFreshnessFilter,
   InventorySortOption,
 } from '../../types/medicine';
-import { stockService } from '../../services/stockService';
+import { stockService, StockServiceError } from '../../services/stockService';
 import { AvailabilityStatus } from '../../components/AvailabilityStatus';
 import { FreshnessBadge } from '../../components/FreshnessBadge';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
 import { InventoryMedicineModal } from './InventoryMedicineModal';
+import { StockHistoryModal } from './StockHistoryModal';
 import {
   STOCK_STATUS_LABELS,
   filterAndSortInventory,
   formatExactTimestamp,
+  getZeroQuantityFeedback,
   isStockRecordStale,
+  mergeServerStockRecord,
   summarizeInventory,
   validateOptionalQuantityInput,
 } from './inventoryUtils';
@@ -38,6 +41,7 @@ import {
   LayoutGrid,
   Table2,
   Clock,
+  History,
 } from 'lucide-react';
 
 interface OneTapStockControlProps {
@@ -93,6 +97,18 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
   const [updatingAction, setUpdatingAction] = useState<StockStatus | 'quantity' | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
+  const [lastSavedFeedback, setLastSavedFeedback] = useState<{
+    stockId: string;
+    status: StockStatus;
+    updatedAt: string;
+    message: string;
+  } | null>(null);
+  const [rowErrorFeedback, setRowErrorFeedback] = useState<{
+    stockId: string;
+    message: string;
+    isConflict?: boolean;
+    retryAction?: () => void;
+  } | null>(null);
 
   const [draftQuantities, setDraftQuantities] = useState<Record<string, string>>({});
   const [quantityErrors, setQuantityErrors] = useState<Record<string, string>>({});
@@ -102,6 +118,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     mode: 'add' | 'edit';
     item: StockInventoryRecord | null;
   }>({ isOpen: false, mode: 'add', item: null });
+  const [historyItem, setHistoryItem] = useState<StockInventoryRecord | null>(null);
 
   const fetchInventory = useCallback(async () => {
     setIsLoading(true);
@@ -220,7 +237,36 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     });
   };
 
+  const applyRowSaveError = (
+    item: StockInventoryRecord,
+    err: unknown,
+    fallbackMessage: string,
+    retryAction?: () => void
+  ) => {
+    const message = err instanceof Error ? err.message : fallbackMessage;
+    const isConflict = err instanceof StockServiceError && err.status === 409;
+
+    if (err instanceof StockServiceError && err.fields?.quantity) {
+      setQuantityErrors((prev) => ({
+        ...prev,
+        [item.stockId]: err.fields?.quantity || message,
+      }));
+    }
+
+    setActionErrorMessage(message);
+    setRowErrorFeedback({
+      stockId: item.stockId,
+      message,
+      isConflict,
+      retryAction,
+    });
+  };
+
   const handleSaveQuantityOnly = async (item: StockInventoryRecord) => {
+    if (updatingStockId === item.stockId) {
+      return;
+    }
+
     const raw = getQuantityInputValue(item);
     const validation = validateOptionalQuantityInput(raw);
     if (!validation.valid) {
@@ -235,23 +281,46 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     setUpdatingAction('quantity');
     setSuccessMessage(null);
     setActionErrorMessage(null);
+    if (lastSavedFeedback?.stockId === item.stockId) {
+      setLastSavedFeedback(null);
+    }
+    if (rowErrorFeedback?.stockId === item.stockId) {
+      setRowErrorFeedback(null);
+    }
 
     try {
-      const updated = await stockService.updateInventoryItem(pharmacyId, item.stockId, {
+      const serverUpdate = await stockService.updateInventoryItem(pharmacyId, item.stockId, {
         quantity: validation.value === undefined ? null : validation.value,
       });
-      setInventory((prev) => prev.map((i) => (i.stockId === updated.stockId ? updated : i)));
+      const merged = mergeServerStockRecord(item, serverUpdate);
+      setInventory((prev) => prev.map((i) => (i.stockId === merged.stockId ? merged : i)));
       handleResetQuantityDraft(item.stockId);
+
+      const zeroFeedback = getZeroQuantityFeedback(merged.status, merged.quantity, item.status);
       const qtySummary =
-        updated.quantity !== undefined ? `${updated.quantity} units` : 'quantity cleared';
-      setSuccessMessage(
-        `Saved ${updated.medicineName} (${qtySummary}) • Updated ${formatExactTimestamp(updated.updatedAt)}`
-      );
+        merged.quantity !== undefined ? `${merged.quantity} units` : 'quantity cleared';
+      const detail = zeroFeedback
+        ? `${merged.medicineName} (${qtySummary}) — ${zeroFeedback.explanation}`
+        : `${merged.medicineName} (${qtySummary})`;
+      const confirmationText = `Saved ${detail} • Updated ${formatExactTimestamp(merged.updatedAt)}`;
+
+      setSuccessMessage(confirmationText);
+      setLastSavedFeedback({
+        stockId: merged.stockId,
+        status: merged.status,
+        updatedAt: merged.updatedAt,
+        message: zeroFeedback
+          ? `Saved • ${zeroFeedback.explanation}`
+          : `Saved (${qtySummary}) at ${formatExactTimestamp(merged.updatedAt)}`,
+      });
     } catch (err: unknown) {
-      setActionErrorMessage(
-        err instanceof Error
-          ? err.message
-          : `Could not update quantity for ${item.medicineName}. Your draft was kept so you can retry.`
+      applyRowSaveError(
+        item,
+        err,
+        `Could not update quantity for ${item.medicineName}. Your draft was kept so you can retry.`,
+        () => {
+          void handleSaveQuantityOnly(item);
+        }
       );
     } finally {
       setUpdatingStockId(null);
@@ -263,6 +332,10 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     item: StockInventoryRecord,
     newStatus: 'available' | 'low' | 'out'
   ) => {
+    if (updatingStockId === item.stockId) {
+      return;
+    }
+
     const stale = isStockRecordStale(item);
     const qtyDirty = hasUnsavedQuantity(item);
     if (item.status === newStatus && !stale && !qtyDirty) {
@@ -290,29 +363,53 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     setUpdatingAction(newStatus);
     setSuccessMessage(null);
     setActionErrorMessage(null);
+    if (lastSavedFeedback?.stockId === item.stockId) {
+      setLastSavedFeedback(null);
+    }
+    if (rowErrorFeedback?.stockId === item.stockId) {
+      setRowErrorFeedback(null);
+    }
 
     try {
-      const updated = await stockService.updateStockStatus(
+      const serverUpdate = await stockService.updateStockStatus(
         pharmacyId,
         item.stockId,
         newStatus,
         quantityToSubmit
       );
-      setInventory((prev) => prev.map((i) => (i.stockId === updated.stockId ? updated : i)));
+      const merged = mergeServerStockRecord(item, serverUpdate);
+      setInventory((prev) => prev.map((i) => (i.stockId === merged.stockId ? merged : i)));
       if (qtyDirty) {
         handleResetQuantityDraft(item.stockId);
       }
-      const statusLabel = STOCK_STATUS_LABELS[updated.status] || newStatus;
+
+      const statusLabel = STOCK_STATUS_LABELS[merged.status] || merged.status;
+      const zeroFeedback = getZeroQuantityFeedback(merged.status, merged.quantity, newStatus);
       const qtyPart =
-        updated.quantity !== undefined ? ` (${updated.quantity} in stock)` : '';
-      setSuccessMessage(
-        `Saved ${updated.medicineName} as ${statusLabel}${qtyPart} • Updated ${formatExactTimestamp(updated.updatedAt)}`
-      );
+        merged.quantity !== undefined
+          ? ` (${merged.quantity === 0 ? '0 units' : `${merged.quantity} in stock`})`
+          : '';
+      const confirmationText = zeroFeedback
+        ? `Saved ${merged.medicineName}: ${statusLabel}${qtyPart} — ${zeroFeedback.explanation} • Updated ${formatExactTimestamp(merged.updatedAt)}`
+        : `Saved ${merged.medicineName} as ${statusLabel}${qtyPart} • Updated ${formatExactTimestamp(merged.updatedAt)}`;
+
+      setSuccessMessage(confirmationText);
+      setLastSavedFeedback({
+        stockId: merged.stockId,
+        status: merged.status,
+        updatedAt: merged.updatedAt,
+        message: zeroFeedback
+          ? `Saved as ${statusLabel} • ${zeroFeedback.explanation}`
+          : `Saved as ${statusLabel} at ${formatExactTimestamp(merged.updatedAt)}`,
+      });
     } catch (err: unknown) {
-      setActionErrorMessage(
-        err instanceof Error
-          ? err.message
-          : `Failed to save status for ${item.medicineName}. Changes were not saved.`
+      applyRowSaveError(
+        item,
+        err,
+        `Failed to save status for ${item.medicineName}. Changes were not saved.`,
+        () => {
+          void handleOneTapUpdate(item, newStatus);
+        }
       );
     } finally {
       setUpdatingStockId(null);
@@ -325,11 +422,25 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     setActionErrorMessage(null);
     const created = await stockService.addInventoryItem(pharmacyId, payload);
     setInventory((prev) => [created, ...prev]);
-    setSuccessMessage(
-      `Added ${created.medicineName} (${created.strength}) as ${
-        STOCK_STATUS_LABELS[created.status]
-      } • Updated ${formatExactTimestamp(created.updatedAt)}`
+    const zeroFeedback = getZeroQuantityFeedback(
+      created.status,
+      created.quantity,
+      payload.status
     );
+    const statusLabel = STOCK_STATUS_LABELS[created.status];
+    setSuccessMessage(
+      zeroFeedback
+        ? `Added ${created.medicineName} (${created.strength}) as ${statusLabel} — ${zeroFeedback.explanation} • Updated ${formatExactTimestamp(created.updatedAt)}`
+        : `Added ${created.medicineName} (${created.strength}) as ${statusLabel} • Updated ${formatExactTimestamp(created.updatedAt)}`
+    );
+    setLastSavedFeedback({
+      stockId: created.stockId,
+      status: created.status,
+      updatedAt: created.updatedAt,
+      message: zeroFeedback
+        ? `Added as ${statusLabel} • ${zeroFeedback.explanation}`
+        : `Added at ${formatExactTimestamp(created.updatedAt)}`,
+    });
   };
 
   const handleSaveEditModal = async (
@@ -338,12 +449,36 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
   ) => {
     setSuccessMessage(null);
     setActionErrorMessage(null);
-    const updated = await stockService.updateInventoryItem(pharmacyId, stockId, payload);
-    setInventory((prev) => prev.map((i) => (i.stockId === updated.stockId ? updated : i)));
+    const existing = inventory.find((i) => i.stockId === stockId);
+    const serverUpdate = await stockService.updateInventoryItem(pharmacyId, stockId, payload);
+    const merged = existing
+      ? mergeServerStockRecord(existing, serverUpdate)
+      : (serverUpdate as StockInventoryRecord);
+    setInventory((prev) => prev.map((i) => (i.stockId === merged.stockId ? merged : i)));
     handleResetQuantityDraft(stockId);
-    setSuccessMessage(
-      `Updated ${updated.medicineName} (${STOCK_STATUS_LABELS[updated.status]}) • Updated ${formatExactTimestamp(updated.updatedAt)}`
+    if (rowErrorFeedback?.stockId === stockId) {
+      setRowErrorFeedback(null);
+    }
+
+    const statusLabel = STOCK_STATUS_LABELS[merged.status];
+    const zeroFeedback = getZeroQuantityFeedback(
+      merged.status,
+      merged.quantity,
+      payload.status
     );
+    setSuccessMessage(
+      zeroFeedback
+        ? `Updated ${merged.medicineName} (${statusLabel}) — ${zeroFeedback.explanation} • Updated ${formatExactTimestamp(merged.updatedAt)}`
+        : `Updated ${merged.medicineName} (${statusLabel}) • Updated ${formatExactTimestamp(merged.updatedAt)}`
+    );
+    setLastSavedFeedback({
+      stockId: merged.stockId,
+      status: merged.status,
+      updatedAt: merged.updatedAt,
+      message: zeroFeedback
+        ? `Saved as ${statusLabel} • ${zeroFeedback.explanation}`
+        : `Updated at ${formatExactTimestamp(merged.updatedAt)}`,
+    });
   };
 
   const renderQuantityControl = (item: StockInventoryRecord, compact = false) => {
@@ -497,9 +632,148 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     );
   };
 
+  const renderItemStateNotices = (item: StockInventoryRecord) => {
+    const isUpdating = updatingStockId === item.stockId;
+    const stale = isStockRecordStale(item);
+    const zeroFeedback = getZeroQuantityFeedback(item.status, item.quantity);
+    const rowSaved = lastSavedFeedback?.stockId === item.stockId ? lastSavedFeedback : null;
+    const rowError = rowErrorFeedback?.stockId === item.stockId ? rowErrorFeedback : null;
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '2px' }}>
+        {isUpdating && (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '11px',
+              fontWeight: 600,
+              color: 'var(--color-action-primary)',
+            }}
+          >
+            <span className="spinner-small" aria-hidden="true" />
+            <span>Saving update to server...</span>
+          </div>
+        )}
+
+        {!isUpdating && rowSaved && (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontSize: '11px',
+              fontWeight: 600,
+              color: 'var(--color-status-available)',
+            }}
+          >
+            <CheckCircle2 size={12} aria-hidden="true" />
+            <span>{rowSaved.message}</span>
+          </div>
+        )}
+
+        {!isUpdating && rowError && (
+          <div
+            role="alert"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              padding: '6px 8px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--color-status-danger-border)',
+              backgroundColor: 'var(--color-status-danger-bg)',
+              color: 'var(--color-status-danger)',
+              fontSize: '11px',
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>{rowError.message}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {rowError.isConflict ? (
+                <button
+                  type="button"
+                  onClick={() => void fetchInventory()}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    color: 'var(--color-action-primary)',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Refresh Inventory
+                </button>
+              ) : (
+                rowError.retryAction && (
+                  <button
+                    type="button"
+                    onClick={rowError.retryAction}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      color: 'var(--color-action-primary)',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    Retry Update
+                  </button>
+                )
+              )}
+              <button
+                type="button"
+                onClick={() => setRowErrorFeedback(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  color: 'var(--color-text-secondary)',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        {item.status === 'unverified' && (
+          <span style={{ fontSize: '11px', color: 'var(--color-status-caution)' }}>
+            Flagged unverified — select a status to reconfirm.
+          </span>
+        )}
+
+        {stale && item.status !== 'unverified' && (
+          <span style={{ fontSize: '11px', color: 'var(--color-status-caution)' }}>
+            Stale report — choose a status to reconfirm current stock.
+          </span>
+        )}
+
+        {zeroFeedback && (
+          <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+            {zeroFeedback.explanation}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const renderStatusControls = (item: StockInventoryRecord) => {
     const isUpdating = updatingStockId === item.stockId;
     const stale = isStockRecordStale(item);
+    const qtyDirty = hasUnsavedQuantity(item);
 
     return (
       <div
@@ -523,7 +797,9 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
               title={
                 isCurrent && stale
                   ? `Reconfirm ${ctrl.label} status to refresh timestamp`
-                  : `Set status to ${ctrl.label}`
+                  : isCurrent && !qtyDirty
+                    ? `Current reported status: ${ctrl.label}`
+                    : `Set status to ${ctrl.label}`
               }
               className="inventory-status-btn"
               style={{
@@ -562,6 +838,23 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
         >
           <Edit3 size={13} aria-hidden="true" />
           <span>Edit</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setHistoryItem(item)}
+          className="btn-secondary inventory-status-btn"
+          style={{
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--color-border-default)',
+            backgroundColor: 'var(--color-surface-panel)',
+            color: 'var(--color-text-secondary)',
+            cursor: 'pointer',
+          }}
+          aria-label={`View read-only stock history for ${item.medicineName}`}
+        >
+          <History size={13} aria-hidden="true" />
+          <span>History</span>
         </button>
       </div>
     );
@@ -1358,7 +1651,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                       </td>
 
                       {/* Reported Status & Timestamp */}
-                      <td style={{ minWidth: '190px' }}>
+                      <td style={{ minWidth: '210px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
                           <AvailabilityStatus status={item.status} quantity={item.quantity} size="sm" />
                           <FreshnessBadge updatedAt={item.updatedAt} isStale={stale} />
@@ -1374,11 +1667,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                             <Clock size={11} aria-hidden="true" />
                             <span>{formatExactTimestamp(item.updatedAt)}</span>
                           </div>
-                          {item.status === 'unverified' && (
-                            <span style={{ fontSize: '11px', color: 'var(--color-status-caution)' }}>
-                              Flagged unverified — select a status to reconfirm.
-                            </span>
-                          )}
+                          {renderItemStateNotices(item)}
                         </div>
                       </td>
 
@@ -1472,11 +1761,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                       </span>
                     </div>
 
-                    {item.status === 'unverified' && (
-                      <div style={{ fontSize: '12px', color: 'var(--color-status-caution)', marginTop: '6px' }}>
-                        Flagged unverified — select a status below after checking physical stock.
-                      </div>
-                    )}
+                    <div style={{ marginTop: '6px' }}>{renderItemStateNotices(item)}</div>
                   </div>
 
                   {/* Optional Quantity */}
@@ -1526,6 +1811,14 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
           onClose={() => setModalState((prev) => ({ ...prev, isOpen: false }))}
           onSaveAdd={handleSaveAddModal}
           onSaveEdit={handleSaveEditModal}
+        />
+      )}
+
+      {historyItem && (
+        <StockHistoryModal
+          pharmacyId={pharmacyId}
+          item={historyItem}
+          onClose={() => setHistoryItem(null)}
         />
       )}
     </div>

@@ -4,49 +4,16 @@ import assert from 'node:assert/strict';
 import {
   filterAndSortInventory,
   formatExactTimestamp,
+  formatTimeAgo,
+  getZeroQuantityFeedback,
   isDuplicateInventoryMedicine,
+  isReportStale,
   isStockRecordStale,
+  mergeServerStockRecord,
+  normalizeStockStatus,
   summarizeInventory,
   validateOptionalQuantityInput,
 } from '../src/features/pharmacy/inventoryUtils.ts';
-
-function formatTimeAgo(isoString) {
-  if (!isoString) return 'Update time unavailable';
-  try {
-    const updated = new Date(isoString);
-    if (isNaN(updated.getTime())) return 'Update time unavailable';
-
-    const diffMs = Date.now() - updated.getTime();
-    if (diffMs < 0) return 'Just now';
-
-    const diffMinutes = Math.floor(diffMs / (1000 * 60));
-    if (diffMinutes < 1) return 'Just now';
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-
-    const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-
-    return updated.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  } catch {
-    return 'Update time unavailable';
-  }
-}
-
-function isReportStale(isoString, thresholdHours = 24) {
-  if (!isoString) return true;
-  try {
-    const updated = new Date(isoString);
-    if (isNaN(updated.getTime())) return true;
-    const diffHours = (Date.now() - updated.getTime()) / (1000 * 60 * 60);
-    return diffHours >= thresholdHours;
-  } catch {
-    return true;
-  }
-}
 
 const nowMs = Date.now();
 const sampleInventory = [
@@ -256,4 +223,87 @@ test('One-Tap Stock Status Transitions: freshness separate from availability', (
   assert.equal(updatedItem.status, 'available');
   assert.equal(updatedItem.isStale, false, 'Newly reported stock is fresh');
   assert.equal(updatedItem.quantity, 100);
+});
+
+test('normalizeStockStatus handles API enum and display label variants without guessing', () => {
+  assert.equal(normalizeStockStatus('AVAILABLE'), 'available');
+  assert.equal(normalizeStockStatus('low'), 'low');
+  assert.equal(normalizeStockStatus('OUT_OF_STOCK'), 'out');
+  assert.equal(normalizeStockStatus('Out of Stock'), 'out');
+  assert.equal(normalizeStockStatus('UNVERIFIED'), 'unverified');
+  assert.equal(normalizeStockStatus('unknown_status'), null);
+});
+
+test('Freshness rules treat staleness separately from reported availability status', () => {
+  const recentIso = new Date(Date.now() - 2 * 3600000).toISOString();
+  const oldIso = new Date(Date.now() - 30 * 3600000).toISOString();
+
+  assert.equal(isReportStale(recentIso), false);
+  assert.equal(isReportStale(oldIso), true);
+  assert.equal(formatTimeAgo(recentIso), '2h ago');
+
+  // Available item marked stale by server remains Available + Stale
+  assert.equal(
+    isStockRecordStale({ updatedAt: recentIso, freshness: 'stale' }),
+    true
+  );
+  assert.equal(
+    isStockRecordStale({ updatedAt: oldIso, isStale: false }),
+    false,
+    'Explicit server isStale:false is respected'
+  );
+});
+
+test('mergeServerStockRecord preserves catalogue metadata across partial PATCH responses', () => {
+  const recentUpdatedAt = new Date().toISOString();
+  const existing = {
+    stockId: 'stk_101',
+    pharmacyId: 'pharm_1',
+    medicineName: 'Napa Extra',
+    genericName: 'Paracetamol + Caffeine',
+    strength: '500mg + 65mg',
+    form: 'Tablet',
+    status: 'available',
+    quantity: 18,
+    updatedAt: '2026-04-01T10:00:00.000Z',
+    isStale: true,
+    freshness: 'stale',
+  };
+
+  const serverPatch = {
+    stockId: 'stk_101',
+    status: 'low',
+    quantity: 4,
+    updatedAt: recentUpdatedAt,
+  };
+
+  const merged = mergeServerStockRecord(existing, serverPatch);
+  assert.equal(merged.medicineName, 'Napa Extra');
+  assert.equal(merged.genericName, 'Paracetamol + Caffeine');
+  assert.equal(merged.strength, '500mg + 65mg');
+  assert.equal(merged.status, 'low');
+  assert.equal(merged.quantity, 4);
+  assert.equal(merged.updatedAt, recentUpdatedAt);
+  // Clears prior isStale/freshness instead of fabricating them when omitted by PATCH
+  assert.equal(merged.isStale, undefined);
+  assert.equal(merged.freshness, undefined);
+  assert.equal(isStockRecordStale(merged), false);
+});
+
+test('getZeroQuantityFeedback reflects server-returned status without inventing normalization', () => {
+  // Quantity > 0 or missing does not produce zero-quantity feedback
+  assert.equal(getZeroQuantityFeedback('available', 5), null);
+  assert.equal(getZeroQuantityFeedback('out', undefined), null);
+
+  // Server returned "out" after client requested "available" with 0 units
+  const normalized = getZeroQuantityFeedback('out', 0, 'available');
+  assert.ok(normalized);
+  assert.equal(normalized.wasStatusNormalized, true);
+  assert.match(normalized.explanation, /Out of Stock/i);
+
+  // Server accepted "available" with 0 units — UI still displays server-returned status cleanly
+  const preserved = getZeroQuantityFeedback('available', 0, 'available');
+  assert.ok(preserved);
+  assert.equal(preserved.wasStatusNormalized, false);
+  assert.match(preserved.explanation, /Available/i);
 });

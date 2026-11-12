@@ -17,6 +17,81 @@ export const STOCK_STATUS_LABELS: Record<StockStatus, string> = {
   unverified: 'Unverified Report',
 };
 
+const STOCK_STATUS_ALIASES: Record<string, StockStatus> = {
+  available: 'available',
+  in_stock: 'available',
+  low: 'low',
+  low_stock: 'low',
+  'low stock': 'low',
+  out: 'out',
+  out_of_stock: 'out',
+  'out of stock': 'out',
+  unverified: 'unverified',
+  unverified_report: 'unverified',
+  'unverified report': 'unverified',
+};
+
+/**
+ * Normalizes API or database stock status strings into canonical frontend StockStatus values.
+ * Returns null if the value is not a recognized status, avoiding fabricated states.
+ */
+export function normalizeStockStatus(raw: unknown): StockStatus | null {
+  if (typeof raw !== 'string') return null;
+  const cleaned = raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (cleaned in STOCK_STATUS_ALIASES) {
+    return STOCK_STATUS_ALIASES[cleaned];
+  }
+  const spaceCleaned = raw.trim().toLowerCase();
+  return STOCK_STATUS_ALIASES[spaceCleaned] ?? null;
+}
+
+/**
+ * Formats an ISO timestamp into a concise relative age string.
+ */
+export function formatTimeAgo(isoString?: string): string {
+  if (!isoString) return 'Update time unavailable';
+  try {
+    const updated = new Date(isoString);
+    if (Number.isNaN(updated.getTime())) return 'Update time unavailable';
+
+    const diffMs = Date.now() - updated.getTime();
+    if (diffMs < 0) return 'Just now';
+
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+
+    return updated.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch {
+    return 'Update time unavailable';
+  }
+}
+
+/**
+ * Evaluates whether a timestamp exceeds the freshness threshold (default 24 hours).
+ */
+export function isReportStale(
+  isoString?: string,
+  thresholdHours = DEFAULT_STALE_THRESHOLD_HOURS
+): boolean {
+  if (!isoString) return true;
+  try {
+    const updated = new Date(isoString);
+    if (Number.isNaN(updated.getTime())) return true;
+    const diffHours = (Date.now() - updated.getTime()) / (1000 * 60 * 60);
+    return diffHours >= thresholdHours;
+  } catch {
+    return true;
+  }
+}
+
 export interface InventoryFilterOptions {
   query: string;
   statusFilter: InventoryStatusFilter;
@@ -40,22 +115,95 @@ export interface QuantityValidationResult {
   error?: string;
 }
 
+export interface ZeroQuantityFeedback {
+  explanation: string;
+  wasStatusNormalized: boolean;
+}
+
 /**
- * Determines whether a stock record is stale based on explicit server flag
+ * Determines whether a stock record is stale based on explicit server flag/freshness
  * or elapsed hours since updatedAt. Keeps freshness separate from stock status.
  */
 export function isStockRecordStale(
-  item: Pick<StockInventoryRecord, 'updatedAt' | 'isStale'>,
+  item: Pick<StockInventoryRecord, 'updatedAt' | 'isStale' | 'freshness'>,
   thresholdHours = DEFAULT_STALE_THRESHOLD_HOURS
 ): boolean {
   if (typeof item.isStale === 'boolean') {
     return item.isStale;
   }
-  if (!item.updatedAt) return true;
-  const parsed = new Date(item.updatedAt);
-  if (Number.isNaN(parsed.getTime())) return true;
-  const diffHours = (Date.now() - parsed.getTime()) / (1000 * 60 * 60);
-  return diffHours >= thresholdHours;
+  if (item.freshness === 'stale') return true;
+  if (item.freshness === 'fresh') return false;
+  return isReportStale(item.updatedAt, thresholdHours);
+}
+
+/**
+ * Merges an authoritative server update response into an existing inventory record.
+ * Handles partial PATCH responses (e.g. API.md §10.1 returning stockId, medicineId, status, quantity, updatedAt)
+ * without losing catalogue identity fields or overriding server freshness/status values.
+ */
+export function mergeServerStockRecord(
+  existing: StockInventoryRecord,
+  serverUpdate: Partial<StockInventoryRecord> & {
+    stockId: string;
+    status: StockStatus;
+    updatedAt: string;
+  }
+): StockInventoryRecord {
+  const hasExplicitQuantity = 'quantity' in serverUpdate;
+  const resolvedQuantity = hasExplicitQuantity
+    ? serverUpdate.quantity === null || serverUpdate.quantity === undefined
+      ? undefined
+      : serverUpdate.quantity
+    : existing.quantity;
+
+  const hasExplicitPrice = 'price' in serverUpdate;
+  const resolvedPrice = hasExplicitPrice
+    ? serverUpdate.price === null || serverUpdate.price === undefined
+      ? undefined
+      : serverUpdate.price
+    : existing.price;
+
+  return {
+    ...existing,
+    ...serverUpdate,
+    quantity: resolvedQuantity,
+    price: resolvedPrice,
+    // Do not retain a stale boolean from the prior record if the server returned a fresh update without isStale
+    isStale: 'isStale' in serverUpdate ? serverUpdate.isStale : undefined,
+    freshness: 'freshness' in serverUpdate ? serverUpdate.freshness : undefined,
+  };
+}
+
+/**
+ * Produces concise, non-invented user feedback when quantity is reported as 0.
+ * Per PRD §7.2, displays the server-returned status and a concise explanation without
+ * inventing client-side status transition rules.
+ */
+export function getZeroQuantityFeedback(
+  status: StockStatus,
+  quantity?: number | null,
+  requestedStatus?: StockStatus
+): ZeroQuantityFeedback | null {
+  if (quantity !== 0) return null;
+
+  if (requestedStatus && requestedStatus !== status) {
+    return {
+      wasStatusNormalized: true,
+      explanation: `Quantity is 0 — server saved status as ${STOCK_STATUS_LABELS[status]}.`,
+    };
+  }
+
+  if (status === 'out') {
+    return {
+      wasStatusNormalized: false,
+      explanation: 'Quantity is 0 — reported as Out of Stock.',
+    };
+  }
+
+  return {
+    wasStatusNormalized: false,
+    explanation: `Quantity is 0 — status reflects server-reported ${STOCK_STATUS_LABELS[status]}.`,
+  };
 }
 
 /**

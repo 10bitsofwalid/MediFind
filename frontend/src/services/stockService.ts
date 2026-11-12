@@ -4,6 +4,8 @@ import axios from 'axios';
 import type { PharmacyApplicationResponse, StockStatus } from '../types/pharmacy';
 import type {
   Medicine,
+  StockHistoryRecord,
+  StockHistoryResponse,
   StockInventoryRecord,
   StockInventoryQuery,
   AddInventoryMedicinePayload,
@@ -11,9 +13,20 @@ import type {
 } from '../types/medicine';
 import { isMockApiEnabled } from './pharmacyService';
 import { getStoredCatalogue } from './adminService';
+import {
+  isReportStale,
+  normalizeStockStatus,
+} from '../features/pharmacy/inventoryUtils';
 
 const MOCK_STOCK_STORAGE_KEY = 'medifind_mock_stock_inventory';
+const MOCK_HISTORY_STORAGE_KEY = 'medifind_mock_stock_history';
 const DEFAULT_MOCK_APP_KEY = 'medifind_mock_pharmacy_application';
+
+export type ServerStockUpdate = Partial<StockInventoryRecord> & {
+  stockId: string;
+  status: StockStatus;
+  updatedAt: string;
+};
 
 export class StockServiceError extends Error {
   code?: string;
@@ -89,6 +102,14 @@ function mapAxiosStockError(err: unknown, fallbackMessage: string): StockService
         serverMessage || 'Please review the highlighted fields and try again.',
         code || 'VALIDATION_ERROR',
         httpStatus,
+        fields
+      );
+    }
+    if (httpStatus === 429) {
+      return new StockServiceError(
+        serverMessage || 'Too many requests in a short period. Please wait a moment and try again.',
+        code || 'RATE_LIMITED',
+        429,
         fields
       );
     }
@@ -196,6 +217,248 @@ function validateOwnerWritableStatus(status?: StockStatus): void {
   }
 }
 
+function isValidIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  return !Number.isNaN(new Date(value).getTime());
+}
+
+function getMockCurrentActor(): { id: string | null; name: string | null } {
+  try {
+    const rawUser = localStorage.getItem('user');
+    if (!rawUser) return { id: null, name: null };
+    const parsed = JSON.parse(rawUser) as { id?: unknown; name?: unknown };
+    return {
+      id: typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id.trim() : null,
+      name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim() : null,
+    };
+  } catch {
+    return { id: null, name: null };
+  }
+}
+
+function getMockHistoryStorageKey(pharmacyId: string, stockId: string): string {
+  return `${MOCK_HISTORY_STORAGE_KEY}_${pharmacyId}_${stockId}`;
+}
+
+function appendMockStockHistory(
+  pharmacyId: string,
+  stockId: string,
+  entry: Omit<StockHistoryRecord, 'historyId'>
+): void {
+  const key = getMockHistoryStorageKey(pharmacyId, stockId);
+  let existing: StockHistoryRecord[] = [];
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        existing = parsed;
+      }
+    }
+  } catch {
+    existing = [];
+  }
+
+  const record: StockHistoryRecord = {
+    historyId: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    ...entry,
+  };
+
+  localStorage.setItem(key, JSON.stringify([record, ...existing]));
+}
+
+function normalizeServerStockUpdate(raw: unknown): ServerStockUpdate {
+  if (!raw || typeof raw !== 'object') {
+    throw new StockServiceError(
+      'Server returned an invalid stock update confirmation.',
+      'INVALID_RESPONSE',
+      502
+    );
+  }
+  const obj = raw as Record<string, unknown>;
+  const stockId =
+    typeof obj.stockId === 'string' && obj.stockId.trim()
+      ? obj.stockId.trim()
+      : typeof obj.id === 'string' && obj.id.trim()
+      ? obj.id.trim()
+      : '';
+
+  const normalizedStatus = normalizeStockStatus(obj.status);
+  if (!stockId || !normalizedStatus || !isValidIsoTimestamp(obj.updatedAt)) {
+    throw new StockServiceError(
+      'Server confirmation was missing required stock status or timestamp details.',
+      'INVALID_RESPONSE',
+      502
+    );
+  }
+
+  const update: ServerStockUpdate = {
+    ...(obj as Partial<StockInventoryRecord>),
+    stockId,
+    status: normalizedStatus,
+    updatedAt: obj.updatedAt,
+  };
+
+  if ('quantity' in obj) {
+    if (obj.quantity === null || obj.quantity === undefined) {
+      update.quantity = undefined;
+    } else if (typeof obj.quantity === 'number' && Number.isFinite(obj.quantity) && obj.quantity >= 0) {
+      update.quantity = obj.quantity;
+    }
+  }
+
+  if (typeof obj.isStale === 'boolean') {
+    update.isStale = obj.isStale;
+  } else if (obj.freshness === 'stale') {
+    update.isStale = true;
+    update.freshness = 'stale';
+  } else if (obj.freshness === 'fresh') {
+    update.isStale = false;
+    update.freshness = 'fresh';
+  }
+
+  return update;
+}
+
+function normalizeServerInventoryRecord(
+  raw: unknown,
+  fallbackPharmacyId?: string
+): StockInventoryRecord | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const stockId =
+    typeof obj.stockId === 'string' && obj.stockId.trim()
+      ? obj.stockId.trim()
+      : typeof obj.id === 'string' && obj.id.trim()
+      ? obj.id.trim()
+      : '';
+  const status = normalizeStockStatus(obj.status);
+  if (!stockId || !status) return null;
+
+  const medicineName = typeof obj.medicineName === 'string' ? obj.medicineName : '';
+  const genericName = typeof obj.genericName === 'string' ? obj.genericName : '';
+  const strength = typeof obj.strength === 'string' ? obj.strength : '';
+  const form = typeof obj.form === 'string' ? obj.form : '';
+  const updatedAt = isValidIsoTimestamp(obj.updatedAt) ? obj.updatedAt : '';
+
+  const record: StockInventoryRecord = {
+    stockId,
+    pharmacyId:
+      typeof obj.pharmacyId === 'string' && obj.pharmacyId.trim()
+        ? obj.pharmacyId.trim()
+        : fallbackPharmacyId || '',
+    medicineId: typeof obj.medicineId === 'string' ? obj.medicineId : '',
+    medicineName,
+    genericName,
+    strength,
+    form,
+    manufacturer: typeof obj.manufacturer === 'string' ? obj.manufacturer : undefined,
+    prescriptionRequired:
+      typeof obj.prescriptionRequired === 'boolean' ? obj.prescriptionRequired : undefined,
+    status,
+    quantity:
+      typeof obj.quantity === 'number' && Number.isFinite(obj.quantity) && obj.quantity >= 0
+        ? obj.quantity
+        : undefined,
+    price:
+      typeof obj.price === 'number' && Number.isFinite(obj.price) && obj.price >= 0
+        ? obj.price
+        : undefined,
+    notes: typeof obj.notes === 'string' ? obj.notes : undefined,
+    updatedAt,
+    updatedBy: typeof obj.updatedBy === 'string' ? obj.updatedBy : undefined,
+    updatedByName: typeof obj.updatedByName === 'string' ? obj.updatedByName : undefined,
+  };
+
+  if (typeof obj.isStale === 'boolean') {
+    record.isStale = obj.isStale;
+  }
+  if (obj.freshness === 'stale' || obj.freshness === 'fresh') {
+    record.freshness = obj.freshness;
+    if (record.isStale === undefined) {
+      record.isStale = obj.freshness === 'stale';
+    }
+  }
+
+  return record;
+}
+
+function normalizeHistoryEntry(
+  raw: unknown,
+  fallbackPharmacyId: string,
+  fallbackStockId: string
+): StockHistoryRecord | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const historyId =
+    typeof obj.historyId === 'string' && obj.historyId.trim()
+      ? obj.historyId.trim()
+      : typeof obj.id === 'string' && obj.id.trim()
+      ? obj.id.trim()
+      : typeof obj._id === 'string' && obj._id.trim()
+      ? obj._id.trim()
+      : '';
+
+  const newStatus = normalizeStockStatus(obj.newStatus);
+  const changedAt = isValidIsoTimestamp(obj.changedAt)
+    ? obj.changedAt
+    : isValidIsoTimestamp(obj.updatedAt)
+    ? obj.updatedAt
+    : isValidIsoTimestamp(obj.createdAt)
+    ? obj.createdAt
+    : '';
+
+  if (!historyId || !newStatus || !changedAt) return null;
+
+  const oldStatus =
+    obj.oldStatus === null || obj.oldStatus === undefined || obj.oldStatus === ''
+      ? null
+      : normalizeStockStatus(obj.oldStatus);
+
+  let changedBy: string | null = null;
+  let changedByName: string | null =
+    typeof obj.changedByName === 'string' && obj.changedByName.trim()
+      ? obj.changedByName.trim()
+      : typeof obj.actorName === 'string' && obj.actorName.trim()
+      ? obj.actorName.trim()
+      : null;
+
+  if (typeof obj.changedBy === 'string' && obj.changedBy.trim()) {
+    changedBy = obj.changedBy.trim();
+  } else if (obj.changedBy && typeof obj.changedBy === 'object') {
+    const actor = obj.changedBy as Record<string, unknown>;
+    if (typeof actor.userId === 'string' && actor.userId.trim()) changedBy = actor.userId.trim();
+    else if (typeof actor.id === 'string' && actor.id.trim()) changedBy = actor.id.trim();
+    if (!changedByName && typeof actor.name === 'string' && actor.name.trim()) {
+      changedByName = actor.name.trim();
+    }
+  }
+
+  return {
+    historyId,
+    stockId: typeof obj.stockId === 'string' ? obj.stockId : fallbackStockId,
+    pharmacyId: typeof obj.pharmacyId === 'string' ? obj.pharmacyId : fallbackPharmacyId,
+    medicineId: typeof obj.medicineId === 'string' ? obj.medicineId : '',
+    oldStatus,
+    newStatus,
+    oldQuantity:
+      typeof obj.oldQuantity === 'number' && Number.isFinite(obj.oldQuantity)
+        ? obj.oldQuantity
+        : obj.oldQuantity === null
+        ? null
+        : undefined,
+    newQuantity:
+      typeof obj.newQuantity === 'number' && Number.isFinite(obj.newQuantity)
+        ? obj.newQuantity
+        : obj.newQuantity === null
+        ? null
+        : undefined,
+    changedBy,
+    changedByName,
+    changedAt,
+  };
+}
+
 export const stockService = {
   async getInventory(
     pharmacyId: string,
@@ -209,10 +472,16 @@ export const stockService = {
       try {
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
-        return parsed.filter(
-          (item): item is StockInventoryRecord =>
-            Boolean(item) && typeof item === 'object' && item.pharmacyId === pharmacyId
-        );
+        return parsed
+          .map((item) => normalizeServerInventoryRecord(item, pharmacyId))
+          .filter(
+            (item): item is StockInventoryRecord =>
+              item !== null && item.pharmacyId === pharmacyId
+          )
+          .map((item) => ({
+            ...item,
+            isStale: item.isStale === true ? true : isReportStale(item.updatedAt),
+          }));
       } catch {
         throw new StockServiceError(
           'Stored mock inventory data is unreadable.',
@@ -240,9 +509,38 @@ export const stockService = {
           502
         );
       }
-      return data;
+      return data
+        .map((item) => normalizeServerInventoryRecord(item, pharmacyId))
+        .filter((item): item is StockInventoryRecord => Boolean(item));
     } catch (err: unknown) {
       throw mapAxiosStockError(err, 'Failed to load pharmacy inventory.');
+    }
+  },
+
+  async getInventoryItem(pharmacyId: string, stockId: string): Promise<StockInventoryRecord> {
+    if (isMockApiEnabled()) {
+      const items = await this.getInventory(pharmacyId);
+      const found = items.find((item) => item.stockId === stockId);
+      if (!found) {
+        throw new StockServiceError('Stock item not found in this pharmacy inventory.', 'NOT_FOUND', 404);
+      }
+      return found;
+    }
+
+    try {
+      const res = await api.get(`/owner/inventory/${stockId}`);
+      const raw = res.data?.data ?? res.data;
+      const normalized = normalizeServerInventoryRecord(raw, pharmacyId);
+      if (!normalized) {
+        throw new StockServiceError(
+          'Server returned an unexpected stock item format.',
+          'INVALID_RESPONSE',
+          502
+        );
+      }
+      return normalized;
+    } catch (err: unknown) {
+      throw mapAxiosStockError(err, 'Failed to load stock item.');
     }
   },
 
@@ -288,6 +586,7 @@ export const stockService = {
       }
 
       const now = new Date().toISOString();
+      const actor = getMockCurrentActor();
       const newRecord: StockInventoryRecord = {
         stockId: `stk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         pharmacyId,
@@ -304,12 +603,25 @@ export const stockService = {
         price: payload.price,
         notes: payload.notes?.trim() || undefined,
         updatedAt: now,
-        isStale: false,
+        updatedBy: actor.id || undefined,
+        updatedByName: actor.name || undefined,
       };
 
       const updated = [newRecord, ...inventory];
       localStorage.setItem(`${MOCK_STOCK_STORAGE_KEY}_${pharmacyId}`, JSON.stringify(updated));
-      return newRecord;
+      appendMockStockHistory(pharmacyId, newRecord.stockId, {
+        stockId: newRecord.stockId,
+        pharmacyId,
+        medicineId: newRecord.medicineId,
+        oldStatus: null,
+        newStatus: newRecord.status,
+        oldQuantity: null,
+        newQuantity: newRecord.quantity ?? null,
+        changedBy: actor.id,
+        changedByName: actor.name,
+        changedAt: now,
+      });
+      return { ...newRecord, isStale: false };
     }
 
     if (!payload.medicineId || !payload.medicineId.trim()) {
@@ -331,15 +643,16 @@ export const stockService = {
       if (payload.notes?.trim()) requestBody.notes = payload.notes.trim();
 
       const res = await api.post('/owner/inventory', requestBody);
-      const created = res.data?.data ?? res.data;
-      if (!created || typeof created !== 'object' || !('stockId' in created)) {
+      const rawCreated = res.data?.data ?? res.data;
+      const normalized = normalizeServerInventoryRecord(rawCreated, pharmacyId);
+      if (!normalized || !normalized.updatedAt) {
         throw new StockServiceError(
           'Server returned an invalid confirmation when adding inventory.',
           'INVALID_RESPONSE',
           502
         );
       }
-      return created as StockInventoryRecord;
+      return normalized;
     } catch (err: unknown) {
       throw mapAxiosStockError(err, 'Failed to add medicine to inventory.');
     }
@@ -349,7 +662,7 @@ export const stockService = {
     pharmacyId: string,
     stockId: string,
     payload: UpdateInventoryMedicinePayload
-  ): Promise<StockInventoryRecord> {
+  ): Promise<ServerStockUpdate> {
     if (payload.medicineName !== undefined && !payload.medicineName.trim()) {
       throw new StockServiceError('Medicine name cannot be empty.', 'VALIDATION_ERROR', 422, {
         medicineName: 'Medicine name cannot be empty.',
@@ -406,7 +719,11 @@ export const stockService = {
             : payload.price
           : existing.price;
 
-      const updatedRecord: StockInventoryRecord = {
+      const now = new Date().toISOString();
+      const actor = getMockCurrentActor();
+      const nextStatus = payload.status !== undefined ? payload.status : existing.status;
+
+      const storedRecord: StockInventoryRecord = {
         ...existing,
         medicineName:
           payload.medicineName !== undefined ? payload.medicineName.trim() : existing.medicineName,
@@ -422,30 +739,38 @@ export const stockService = {
           payload.prescriptionRequired !== undefined
             ? payload.prescriptionRequired
             : existing.prescriptionRequired,
-        status: payload.status !== undefined ? payload.status : existing.status,
+        status: nextStatus,
         quantity: nextQuantity,
         price: nextPrice,
         notes: payload.notes !== undefined ? payload.notes.trim() || undefined : existing.notes,
-        updatedAt: new Date().toISOString(),
-        isStale: false,
+        updatedAt: now,
+        updatedBy: actor.id || existing.updatedBy,
+        updatedByName: actor.name || existing.updatedByName,
       };
+      delete storedRecord.isStale;
+      delete storedRecord.freshness;
 
-      inventory[index] = updatedRecord;
+      inventory[index] = storedRecord;
       localStorage.setItem(`${MOCK_STOCK_STORAGE_KEY}_${pharmacyId}`, JSON.stringify(inventory));
-      return updatedRecord;
+      appendMockStockHistory(pharmacyId, stockId, {
+        stockId,
+        pharmacyId,
+        medicineId: existing.medicineId,
+        oldStatus: existing.status,
+        newStatus: storedRecord.status,
+        oldQuantity: existing.quantity ?? null,
+        newQuantity: storedRecord.quantity ?? null,
+        changedBy: actor.id,
+        changedByName: actor.name,
+        changedAt: now,
+      });
+      return { ...storedRecord, isStale: false };
     }
 
     try {
       const res = await api.patch(`/owner/inventory/${stockId}`, payload);
       const updated = res.data?.data ?? res.data;
-      if (!updated || typeof updated !== 'object' || !('stockId' in updated)) {
-        throw new StockServiceError(
-          'Server returned an invalid stock update confirmation.',
-          'INVALID_RESPONSE',
-          502
-        );
-      }
-      return updated as StockInventoryRecord;
+      return normalizeServerStockUpdate(updated);
     } catch (err: unknown) {
       throw mapAxiosStockError(err, 'Failed to update stock record.');
     }
@@ -456,12 +781,88 @@ export const stockService = {
     stockId: string,
     status: StockStatus,
     quantity?: number | null
-  ): Promise<StockInventoryRecord> {
+  ): Promise<ServerStockUpdate> {
     const patch: UpdateInventoryMedicinePayload = { status };
     if (quantity !== undefined) {
       patch.quantity = quantity;
     }
     return this.updateInventoryItem(pharmacyId, stockId, patch);
+  },
+
+  async getStockHistory(
+    pharmacyId: string,
+    stockId: string,
+    options?: { limit?: number; cursor?: string | null }
+  ): Promise<StockHistoryResponse> {
+    if (isMockApiEnabled()) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      assertMockPharmacyAccess(pharmacyId, false);
+      const raw = localStorage.getItem(getMockHistoryStorageKey(pharmacyId, stockId));
+      if (!raw) {
+        return { data: [], page: { limit: options?.limit ?? 20, nextCursor: null } };
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          return { data: [], page: { limit: options?.limit ?? 20, nextCursor: null } };
+        }
+        const normalized = parsed
+          .map((entry) => normalizeHistoryEntry(entry, pharmacyId, stockId))
+          .filter((entry): entry is StockHistoryRecord => Boolean(entry));
+        return {
+          data: normalized,
+          page: { limit: options?.limit ?? 20, nextCursor: null },
+        };
+      } catch {
+        throw new StockServiceError(
+          'Stored mock stock history is unreadable.',
+          'INVALID_STORAGE',
+          500
+        );
+      }
+    }
+
+    try {
+      const params: Record<string, string | number> = {};
+      if (options?.limit) params.limit = options.limit;
+      if (options?.cursor) params.cursor = options.cursor;
+
+      const res = await api.get(`/owner/inventory/${stockId}/history`, {
+        params: Object.keys(params).length > 0 ? params : undefined,
+      });
+
+      const rawList = Array.isArray(res.data) ? res.data : res.data?.data;
+      if (!Array.isArray(rawList)) {
+        throw new StockServiceError(
+          'Server returned an unexpected stock history format.',
+          'INVALID_RESPONSE',
+          502
+        );
+      }
+
+      const normalized = rawList
+        .map((entry) => normalizeHistoryEntry(entry, pharmacyId, stockId))
+        .filter((entry): entry is StockHistoryRecord => Boolean(entry));
+
+      const pageRaw = res.data?.page;
+      const page =
+        pageRaw && typeof pageRaw === 'object'
+          ? {
+              limit:
+                typeof pageRaw.limit === 'number'
+                  ? pageRaw.limit
+                  : options?.limit ?? normalized.length,
+              nextCursor:
+                typeof pageRaw.nextCursor === 'string' && pageRaw.nextCursor.trim()
+                  ? pageRaw.nextCursor
+                  : null,
+            }
+          : undefined;
+
+      return { data: normalized, page };
+    } catch (err: unknown) {
+      throw mapAxiosStockError(err, 'Failed to load stock update history.');
+    }
   },
 
   async searchCatalogue(query: string, formFilter?: string): Promise<Medicine[]> {

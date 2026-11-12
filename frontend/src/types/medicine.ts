@@ -28,7 +28,34 @@ export interface StockInventoryRecord {
   price?: number;
   notes?: string;
   updatedAt: string;
+  updatedBy?: string;
+  updatedByName?: string;
   isStale?: boolean;
+  freshness?: 'fresh' | 'stale';
+}
+
+export interface StockHistoryRecord {
+  historyId: string;
+  stockId?: string;
+  pharmacyId: string;
+  medicineId: string;
+  oldStatus: StockStatus | null;
+  newStatus: StockStatus;
+  oldQuantity?: number | null;
+  newQuantity?: number | null;
+  changedBy?: string | null;
+  changedByName?: string | null;
+  changedAt: string;
+}
+
+export interface StockHistoryPage {
+  limit: number;
+  nextCursor: string | null;
+}
+
+export interface StockHistoryResponse {
+  data: StockHistoryRecord[];
+  page?: StockHistoryPage;
 }
 
 export interface AddInventoryMedicinePayload {
