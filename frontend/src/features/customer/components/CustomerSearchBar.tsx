@@ -1,11 +1,14 @@
 // frontend/src/features/customer/components/CustomerSearchBar.tsx
-import React, { useState } from 'react';
-import { Search, MapPin, Navigation, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, MapPin, Navigation, ArrowRight, X } from 'lucide-react';
+import { MedicineSuggestions } from './MedicineSuggestions';
+import { medicineCatalogueService, type MedicineCatalogueItem } from '../services/medicineCatalogueService';
 
 interface CustomerSearchBarProps {
   initialQuery?: string;
   initialArea?: string;
   onSearch: (params: { query: string; area: string; useLocation: boolean }) => void;
+  onSelectSuggestion?: (item: MedicineCatalogueItem) => void;
   isLoading?: boolean;
   compact?: boolean;
 }
@@ -14,6 +17,7 @@ export const CustomerSearchBar: React.FC<CustomerSearchBarProps> = ({
   initialQuery = '',
   initialArea = '',
   onSearch,
+  onSelectSuggestion,
   isLoading = false,
   compact = false,
 }) => {
@@ -22,6 +26,66 @@ export const CustomerSearchBar: React.FC<CustomerSearchBarProps> = ({
   const [useLocation, setUseLocation] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Sync state during render when props change (official React recommended pattern)
+  const [prevInitialQuery, setPrevInitialQuery] = useState(initialQuery);
+  if (initialQuery !== prevInitialQuery) {
+    setPrevInitialQuery(initialQuery);
+    setQuery(initialQuery);
+  }
+
+  const [prevInitialArea, setPrevInitialArea] = useState(initialArea);
+  if (initialArea !== prevInitialArea) {
+    setPrevInitialArea(initialArea);
+    setArea(initialArea);
+  }
+
+  // Suggestions state
+  const [suggestions, setSuggestions] = useState<MedicineCatalogueItem[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isSearchingSuggestions, setIsSearchingSuggestions] = useState(false);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Debounced suggestion fetching without synchronous setState inside effect
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      return;
+    }
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      setIsSearchingSuggestions(true);
+      try {
+        const matches = await medicineCatalogueService.searchSuggestions(trimmed);
+        if (active) {
+          setSuggestions(matches);
+          setShowSuggestions(matches.length > 0);
+        }
+      } catch {
+        if (active) setSuggestions([]);
+      } finally {
+        if (active) setIsSearchingSuggestions(false);
+      }
+    }, 200);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) {
@@ -29,7 +93,18 @@ export const CustomerSearchBar: React.FC<CustomerSearchBarProps> = ({
       return;
     }
     setValidationError(null);
+    setShowSuggestions(false);
     onSearch({ query: query.trim(), area: area.trim(), useLocation });
+  };
+
+  const handleSelectSuggestion = (item: MedicineCatalogueItem) => {
+    setQuery(item.name);
+    setShowSuggestions(false);
+    setValidationError(null);
+    if (onSelectSuggestion) {
+      onSelectSuggestion(item);
+    }
+    onSearch({ query: item.name, area: area.trim(), useLocation });
   };
 
   const handleUseCurrentLocation = () => {
@@ -60,8 +135,8 @@ export const CustomerSearchBar: React.FC<CustomerSearchBarProps> = ({
           alignItems: 'end',
         }}
       >
-        {/* Medicine Name / Generic Input */}
-        <div>
+        {/* Medicine Name / Generic Input with Suggestions Dropdown */}
+        <div ref={containerRef} style={{ position: 'relative' }}>
           <label
             htmlFor="medicine-search-input"
             style={{
@@ -97,13 +172,20 @@ export const CustomerSearchBar: React.FC<CustomerSearchBarProps> = ({
                 setQuery(e.target.value);
                 if (validationError) setValidationError(null);
               }}
+              onFocus={() => {
+                if (suggestions.length > 0 && query.trim().length >= 2) {
+                  setShowSuggestions(true);
+                }
+              }}
               placeholder="e.g. Paracetamol 500 mg"
               aria-required="true"
               aria-invalid={!!validationError}
               aria-describedby={validationError ? 'search-validation-error' : undefined}
+              aria-autocomplete="list"
+              aria-expanded={showSuggestions && query.trim().length >= 2}
               style={{
                 width: '100%',
-                padding: '12px 14px 12px 38px',
+                padding: '12px 34px 12px 38px',
                 borderRadius: 'var(--radius-md)',
                 border: validationError ? '1px solid var(--color-status-problem)' : '1px solid var(--color-border-default)',
                 fontSize: '14px',
@@ -113,7 +195,40 @@ export const CustomerSearchBar: React.FC<CustomerSearchBarProps> = ({
                 boxSizing: 'border-box',
               }}
             />
+            {query.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery('');
+                  setSuggestions([]);
+                  setShowSuggestions(false);
+                }}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-text-secondary)',
+                  cursor: 'pointer',
+                  padding: '2px',
+                }}
+                aria-label="Clear medicine search input"
+              >
+                <X size={15} aria-hidden="true" />
+              </button>
+            )}
           </div>
+
+          {/* Autocomplete Suggestions dropdown */}
+          {showSuggestions && query.trim().length >= 2 && (
+            <MedicineSuggestions
+              suggestions={suggestions}
+              onSelect={handleSelectSuggestion}
+              isLoading={isSearchingSuggestions}
+            />
+          )}
         </div>
 
         {/* Area / Location Fallback Input */}
@@ -257,4 +372,3 @@ export const CustomerSearchBar: React.FC<CustomerSearchBarProps> = ({
     </form>
   );
 };
-

@@ -64,6 +64,8 @@ export const RegisterPage: React.FC = () => {
       if (role === 'PHARMACY') {
         // Direct new pharmacy owners to the DGDA onboarding wizard
         navigate('/pharmacy/register');
+      } else if (role === 'CUSTOMER') {
+        navigate('/');
       } else {
         navigate('/pharmacy/dashboard');
       }
@@ -357,6 +359,12 @@ export const RegisterPage: React.FC = () => {
           Already have an account?{' '}
           <Link to="/login" style={{ color: 'var(--color-action-primary)', fontWeight: 600, textDecoration: 'none' }}>
             Sign In
+          </Link>
+        </div>
+
+        <div style={{ marginTop: '12px', textAlign: 'center', fontSize: '13px' }}>
+          <Link to="/" style={{ color: 'var(--color-text-secondary)', textDecoration: 'none' }}>
+            Browse medicines without signing in
           </Link>
         </div>
       </div>

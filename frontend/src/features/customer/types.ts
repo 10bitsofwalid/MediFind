@@ -1,7 +1,7 @@
 // frontend/src/features/customer/types.ts
 import type { StockStatus } from '../../types/pharmacy';
 
-export type AvailabilityFilter = 'all' | 'available' | 'low' | 'out';
+export type AvailabilityFilter = 'all' | 'available' | 'low' | 'out' | 'unverified';
 export type SortOption = 'distance' | 'freshness' | 'availability';
 
 export interface CustomerSearchParams {

@@ -44,8 +44,8 @@ export const LoginPage: React.FC = () => {
     try {
       await login(emailTrimmed);
       switchRole(selectedRole);
-      if (selectedRole === 'PHARMACY') {
-        navigate('/pharmacy/dashboard');
+      if (selectedRole === 'CUSTOMER') {
+        navigate('/');
       } else {
         navigate('/pharmacy/dashboard');
       }
@@ -342,6 +342,12 @@ export const LoginPage: React.FC = () => {
           Don't have an account yet?{' '}
           <Link to="/register" style={{ color: 'var(--color-action-primary)', fontWeight: 600, textDecoration: 'none' }}>
             Create an Account
+          </Link>
+        </div>
+
+        <div style={{ marginTop: '12px', textAlign: 'center', fontSize: '13px' }}>
+          <Link to="/" style={{ color: 'var(--color-text-secondary)', textDecoration: 'none' }}>
+            Browse medicines without signing in
           </Link>
         </div>
       </div>

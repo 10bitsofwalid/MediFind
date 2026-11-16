@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../app/useAuth';
 import type { Role } from '../types/pharmacy';
-import { PlusCircle, LayoutDashboard, Building2, UserCheck, Menu, X, LogIn, Search, UserPlus } from 'lucide-react';
+import { PlusCircle, LayoutDashboard, Building2, UserCheck, Menu, X, LogIn, Search, UserPlus, Pill } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 
 export const Navbar: React.FC = () => {
@@ -13,7 +13,15 @@ export const Navbar: React.FC = () => {
 
   // Dynamic role-aware navigation links (resolves UI-02)
   const navLinks = useMemo(() => {
-    if (user?.role === 'CUSTOMER' || !user) {
+    if (user?.role === 'CUSTOMER') {
+      return [
+        { to: '/', label: 'Find medicine', icon: Search },
+        { to: '/medicine', label: 'Medicine details', icon: Pill },
+        { to: '/login', label: 'Customer Account', icon: UserCheck },
+        { to: '/pharmacy/register', label: 'For pharmacies', icon: Building2 },
+      ];
+    }
+    if (!user) {
       return [
         { to: '/', label: 'Find medicine', icon: Search },
         { to: '/login', label: 'Sign in', icon: LogIn },
