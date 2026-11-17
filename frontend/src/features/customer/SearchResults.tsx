@@ -5,9 +5,12 @@ import { CustomerSearchBar } from './components/CustomerSearchBar';
 import { MedicineCatalogueCard } from './components/MedicineCatalogueCard';
 import { SearchResultsList } from './components/SearchResultsList';
 import { SearchFilterBar, type FilterState } from './components/SearchFilterBar';
+import { LocationRequestBanner } from './components/LocationRequestBanner';
+import { CustomerMapView } from './components/CustomerMapView';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
 import { medicineService, type MedicineCatalogueDetails } from '../../services/medicineService';
-import { ArrowLeft, MapPin } from 'lucide-react';
+import { useGeolocation } from './hooks/useGeolocation';
+import { ArrowLeft, MapPin, Map, List } from 'lucide-react';
 import type { NearbyPharmacyResult, AvailabilityFilter } from './types';
 
 const INITIAL_FILTERS: FilterState = {
@@ -16,6 +19,8 @@ const INITIAL_FILTERS: FilterState = {
   openNow: false,
   sortBy: 'distance',
 };
+
+type ViewMode = 'list' | 'map';
 
 export const SearchResults: React.FC = () => {
   const navigate = useNavigate();
@@ -30,33 +35,51 @@ export const SearchResults: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeCallNumber, setActiveCallNumber] = useState<string | null>(null);
+  const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | undefined>(undefined);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [bannerDismissed, setBannerDismissed] = useState<boolean>(false);
 
-  const fetchResults = useCallback(async (medicineQuery: string, searchArea: string) => {
-    setIsLoading(true);
-    setErrorMessage(null);
+  // GPS hook
+  const geo = useGeolocation();
 
-    try {
-      const { medicine, results: searchResults } = await medicineService.searchNearbyPharmacies({
-        query: medicineQuery,
-        area: searchArea,
-      });
+  const fetchResults = useCallback(
+    async (medicineQuery: string, searchArea: string, lat?: number, lng?: number) => {
+      setIsLoading(true);
+      setErrorMessage(null);
 
-      setCurrentMedicine(medicine);
-      setResults(searchResults);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to retrieve nearby pharmacy stock data.';
-      setErrorMessage(message);
-      setResults([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+      try {
+        const { medicine, results: searchResults } = await medicineService.searchNearbyPharmacies({
+          query: medicineQuery,
+          area: searchArea,
+          latitude: lat,
+          longitude: lng,
+        });
 
+        setCurrentMedicine(medicine);
+        setResults(searchResults);
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : 'Failed to retrieve nearby pharmacy stock data.';
+        setErrorMessage(message);
+        setResults([]);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
+  // Trigger fetch on route params change; pass GPS coords if available
   useEffect(() => {
     let isCancelled = false;
     const timer = setTimeout(() => {
       if (!isCancelled) {
-        fetchResults(queryParam, areaParam);
+        fetchResults(
+          queryParam,
+          geo.latitude && geo.longitude ? 'Current Location (GPS)' : areaParam,
+          geo.latitude ?? undefined,
+          geo.longitude ?? undefined
+        );
       }
     }, 0);
 
@@ -64,7 +87,29 @@ export const SearchResults: React.FC = () => {
       isCancelled = true;
       clearTimeout(timer);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryParam, areaParam, fetchResults]);
+
+  // Re-fetch when GPS coords arrive (after user clicks "Use my location")
+  useEffect(() => {
+    if (geo.latitude && geo.longitude) {
+      let isCancelled = false;
+      const timer = setTimeout(() => {
+        if (!isCancelled) {
+          fetchResults(
+            queryParam,
+            'Current Location (GPS)',
+            geo.latitude ?? undefined,
+            geo.longitude ?? undefined
+          );
+        }
+      }, 0);
+      return () => {
+        isCancelled = true;
+        clearTimeout(timer);
+      };
+    }
+  }, [geo.latitude, geo.longitude, queryParam, fetchResults]);
 
   // Client-side filtering & sorting
   const filteredAndSortedResults = useMemo(() => {
@@ -75,7 +120,9 @@ export const SearchResults: React.FC = () => {
 
     // Availability multi-select
     if (filters.availability.length > 0) {
-      list = list.filter((p) => filters.availability.includes(p.stockStatus as AvailabilityFilter));
+      list = list.filter((p) =>
+        filters.availability.includes(p.stockStatus as AvailabilityFilter)
+      );
     }
 
     // Open now
@@ -110,13 +157,35 @@ export const SearchResults: React.FC = () => {
   };
 
   const handleSelectPharmacy = (pharmacyId: string) => {
+    setSelectedPharmacyId(pharmacyId);
     navigate(`/medicine/${currentMedicine?.id || 'med-paracetamol-500'}?pharmacyId=${pharmacyId}`);
+  };
+
+  const handleMapSelectPharmacy = (pharmacyId: string) => {
+    setSelectedPharmacyId(pharmacyId);
   };
 
   const handleCallPharmacy = (phone: string) => {
     setActiveCallNumber(phone);
     window.location.href = `tel:${phone}`;
   };
+
+  const handleRequestLocation = () => {
+    geo.requestLocation();
+  };
+
+  const handleDismissBanner = () => {
+    setBannerDismissed(true);
+    geo.clearLocationError();
+  };
+
+  // Show banner if: not dismissed, no GPS fix yet, and not currently loading GPS
+  const showLocationBanner =
+    !bannerDismissed && !geo.latitude && !geo.longitude && !geo.isLoading;
+
+  // Effective area label for breadcrumb
+  const effectiveAreaLabel =
+    geo.latitude && geo.longitude ? 'Current Location (GPS)' : areaParam;
 
   return (
     <div
@@ -152,11 +221,11 @@ export const SearchResults: React.FC = () => {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
           <MapPin size={13} aria-hidden="true" />
-          <span>Area: {areaParam}</span>
+          <span>Area: {effectiveAreaLabel}</span>
         </div>
       </div>
 
-      {/* Main Search Bar with live autocomplete */}
+      {/* Main Search Bar */}
       <CustomerSearchBar
         initialQuery={queryParam}
         initialArea={areaParam}
@@ -166,7 +235,40 @@ export const SearchResults: React.FC = () => {
         compact
       />
 
-      {/* Medicine Catalogue Card (Shows generic name, form, strength & catalogue verification badge) */}
+      {/* GPS Location Request Banner */}
+      {showLocationBanner && (
+        <LocationRequestBanner
+          isLoading={geo.isLoading}
+          permissionDenied={geo.permissionDenied}
+          error={geo.error}
+          onRequestLocation={handleRequestLocation}
+          onDismiss={handleDismissBanner}
+        />
+      )}
+
+      {/* Show banner again if GPS errored after user clicked "Use my location" */}
+      {!bannerDismissed && geo.isLoading && (
+        <LocationRequestBanner
+          isLoading={true}
+          permissionDenied={false}
+          error={null}
+          onRequestLocation={handleRequestLocation}
+          onDismiss={handleDismissBanner}
+        />
+      )}
+
+      {/* Show error/denied banner if GPS failed */}
+      {!bannerDismissed && (geo.error || geo.permissionDenied) && !geo.isLoading && (
+        <LocationRequestBanner
+          isLoading={false}
+          permissionDenied={geo.permissionDenied}
+          error={geo.error}
+          onRequestLocation={handleRequestLocation}
+          onDismiss={handleDismissBanner}
+        />
+      )}
+
+      {/* Medicine Catalogue Card */}
       {currentMedicine && (
         <MedicineCatalogueCard
           medicine={currentMedicine}
@@ -177,7 +279,7 @@ export const SearchResults: React.FC = () => {
       {/* Mandatory Patient Safety Notice */}
       <DisclaimerBanner variant="inline" />
 
-      {/* Main Content Layout: Filters Sidebar (Left) + Search Results (Right) */}
+      {/* Main Content Layout */}
       <div
         style={{
           display: 'grid',
@@ -196,18 +298,86 @@ export const SearchResults: React.FC = () => {
           />
         </div>
 
-        {/* Results List */}
-        <div style={{ flex: 1, minWidth: '300px' }}>
-          <SearchResultsList
-            results={filteredAndSortedResults}
-            isLoading={isLoading}
-            errorMessage={errorMessage}
-            searchQuery={queryParam}
-            onRetry={() => fetchResults(queryParam, areaParam)}
-            onSelectPharmacy={handleSelectPharmacy}
-            onCallPharmacy={handleCallPharmacy}
-            onSelectAlternative={handleSelectAlternative}
-          />
+        {/* Results: Map / List toggle + content */}
+        <div style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Map / List Toggle */}
+          <div
+            role="group"
+            aria-label="Switch between map and list view"
+            style={{
+              display: 'inline-flex',
+              borderRadius: 'var(--radius-sm)',
+              overflow: 'hidden',
+              border: '1px solid var(--color-border-default)',
+              alignSelf: 'flex-start',
+            }}
+          >
+            <button
+              onClick={() => setViewMode('list')}
+              aria-pressed={viewMode === 'list'}
+              aria-label="List view"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '7px 14px',
+                fontSize: '13px',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: viewMode === 'list' ? 'var(--color-action-primary)' : 'var(--color-surface-panel)',
+                color: viewMode === 'list' ? '#fff' : 'var(--color-text-secondary)',
+                transition: 'background-color 0.15s, color 0.15s',
+              }}
+            >
+              <List size={14} aria-hidden="true" />
+              <span>List</span>
+            </button>
+            <button
+              onClick={() => setViewMode('map')}
+              aria-pressed={viewMode === 'map'}
+              aria-label="Map view"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '7px 14px',
+                fontSize: '13px',
+                fontWeight: 600,
+                border: 'none',
+                borderLeft: '1px solid var(--color-border-default)',
+                cursor: 'pointer',
+                backgroundColor: viewMode === 'map' ? 'var(--color-action-primary)' : 'var(--color-surface-panel)',
+                color: viewMode === 'map' ? '#fff' : 'var(--color-text-secondary)',
+                transition: 'background-color 0.15s, color 0.15s',
+              }}
+            >
+              <Map size={14} aria-hidden="true" />
+              <span>Map</span>
+            </button>
+          </div>
+
+          {/* Content: either List or Map — same filteredAndSortedResults feed */}
+          {viewMode === 'list' ? (
+            <SearchResultsList
+              results={filteredAndSortedResults}
+              isLoading={isLoading}
+              errorMessage={errorMessage}
+              searchQuery={queryParam}
+              onRetry={() => fetchResults(queryParam, areaParam)}
+              onSelectPharmacy={handleSelectPharmacy}
+              onCallPharmacy={handleCallPharmacy}
+              onSelectAlternative={handleSelectAlternative}
+            />
+          ) : (
+            <CustomerMapView
+              results={filteredAndSortedResults}
+              selectedPharmacyId={selectedPharmacyId}
+              onSelectPharmacy={handleMapSelectPharmacy}
+              centerLatitude={geo.latitude ?? undefined}
+              centerLongitude={geo.longitude ?? undefined}
+            />
+          )}
         </div>
       </div>
 
