@@ -123,7 +123,7 @@ export const MobileResultsPreview: React.FC<MobileResultsPreviewProps> = ({
                   )}
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
-                  {item.distanceKm} km away &bull; {item.openingHoursText}
+                  {item.distanceKm} km away{item.openingHoursText ? ` • ${item.openingHoursText}` : ''}
                 </div>
               </div>
             </div>

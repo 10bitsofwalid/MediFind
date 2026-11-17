@@ -200,7 +200,8 @@ export const SelectedPharmacyPanel: React.FC<SelectedPharmacyPanelProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ color: 'var(--color-text-secondary)' }}>Operating schedule:</span>
           <span style={{ fontWeight: 600, color: pharmacy.isOpen ? 'var(--color-status-available)' : 'var(--color-status-problem)' }}>
-            {pharmacy.isOpen ? 'Open Now' : 'Closed'} ({pharmacy.openingHoursText})
+            {pharmacy.isOpen ? 'Open Now' : 'Closed'}
+            {pharmacy.openingHoursText ? ` (${pharmacy.openingHoursText})` : ''}
           </span>
         </div>
       </div>
@@ -449,7 +450,7 @@ export const SelectedPharmacyPanel: React.FC<SelectedPharmacyPanelProps> = ({
             <span>Operating Schedule</span>
           </div>
           <div style={{ color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>
-            {pharmacy.openingHoursText}
+            {pharmacy.openingHoursText || 'Standard daily hours: 09:00 AM - 10:00 PM'}
           </div>
         </div>
       )}

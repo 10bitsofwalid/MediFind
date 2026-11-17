@@ -360,7 +360,8 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
                 <strong>{pharmacy.distanceKm} km away</strong>
                 <span>&bull;</span>
                 <span style={{ color: pharmacy.isOpen ? 'var(--color-status-available)' : 'var(--color-status-problem)' }}>
-                  {pharmacy.isOpen ? 'Open Now' : 'Closed'} ({pharmacy.openingHoursText})
+                  {pharmacy.isOpen ? 'Open Now' : 'Closed'}
+                  {pharmacy.openingHoursText ? ` (${pharmacy.openingHoursText})` : ''}
                 </span>
               </div>
             </div>
