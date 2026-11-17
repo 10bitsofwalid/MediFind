@@ -77,6 +77,14 @@ export const MedicineDetailPage: React.FC = () => {
     };
   }, [id, initialQuery, pharmacyIdParam]);
 
+  useEffect(() => {
+    if (medicine?.name) {
+      document.title = `${medicine.name} - Details & Availability | MediFind`;
+    } else {
+      document.title = 'Medicine Details | MediFind';
+    }
+  }, [medicine]);
+
   const handleCall = (phone: string) => {
     const clean = sanitizePhoneNumber(phone) || phone;
     setActiveCallNumber(clean);

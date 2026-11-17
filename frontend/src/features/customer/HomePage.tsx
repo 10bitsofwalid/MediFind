@@ -1,5 +1,5 @@
 // frontend/src/features/customer/HomePage.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { CustomerSearchBar } from './components/CustomerSearchBar';
 import { MobileResultsPreview } from './components/MobileResultsPreview';
@@ -83,6 +83,10 @@ const DEMO_PREVIEW_RESULTS: NearbyPharmacyResult[] = [
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const [activeCallNumber, setActiveCallNumber] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.title = 'MediFind - Find Medicine Availability Near You';
+  }, []);
 
   const handleSearch = ({ query, area, useLocation }: { query: string; area: string; useLocation: boolean }) => {
     const trimmedQ = query.trim();

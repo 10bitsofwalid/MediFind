@@ -49,6 +49,10 @@ export const SearchResults: React.FC = () => {
   // Synchronize view mode with URL search param
   const viewMode: ViewMode = viewParam === 'map' ? 'map' : 'list';
 
+  useEffect(() => {
+    document.title = `${queryParam} - Pharmacy Stock Search | MediFind`;
+  }, [queryParam]);
+
   const setViewMode = (mode: ViewMode) => {
     const nextParams = new URLSearchParams(searchParams);
     if (mode === 'map') {
