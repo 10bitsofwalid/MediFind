@@ -291,7 +291,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   return (
     <>
       {/* Mobile filter toggle button for <= 768px screens */}
-      <div className="mobile-filter-toggle" style={{ display: 'none', marginBottom: '10px' }}>
+      <div className="mobile-filter-toggle" style={{ marginBottom: '10px' }}>
         <button
           type="button"
           onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}

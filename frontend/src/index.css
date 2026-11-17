@@ -152,7 +152,23 @@ a:focus-visible {
   }
 }
 
-/* Responsive Overrides */
+/* Responsive Overrides & 360px Mobile Polish */
+.mobile-filter-toggle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-filter-toggle {
+    display: block !important;
+  }
+  .filter-sidebar {
+    display: none;
+  }
+  .filter-sidebar.open {
+    display: block !important;
+  }
+}
+
 @media (max-width: 680px) {
   .desktop-nav {
     display: none !important;
