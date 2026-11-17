@@ -1,5 +1,5 @@
 // frontend/src/features/customer/components/ReservationModal.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { reservationService, type ReservationRecord } from '../services/reservationService';
 import { useAuth } from '../../../app/useAuth';
 import { Lock, CheckCircle2, Clock, MapPin, X, AlertTriangle, Loader, ShieldCheck } from 'lucide-react';
@@ -34,8 +34,6 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdRecord, setCreatedRecord] = useState<ReservationRecord | null>(null);
-
-  if (!isOpen) return null;
 
   const isCustomerLoggedIn = user && user.role === 'CUSTOMER';
   const isOutOfStock = pharmacy.stockStatus === 'out';
@@ -81,17 +79,33 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     }
   };
 
-  const handleCloseAndReset = () => {
+  const handleCloseAndReset = useCallback(() => {
     setCreatedRecord(null);
     setErrorMessage(null);
     onClose();
-  };
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleCloseAndReset();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleCloseAndReset]);
+
+  if (!isOpen) return null;
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="reservation-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) handleCloseAndReset();
+      }}
       style={{
         position: 'fixed',
         inset: 0,

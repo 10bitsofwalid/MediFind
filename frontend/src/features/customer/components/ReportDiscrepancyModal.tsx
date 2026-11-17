@@ -1,5 +1,5 @@
 // frontend/src/features/customer/components/ReportDiscrepancyModal.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { reportService, type AvailabilityReportPayload } from '../services/reportService';
 import { AlertTriangle, CheckCircle2, X, Send, Loader } from 'lucide-react';
 import type { NearbyPharmacyResult } from '../types';
@@ -28,6 +28,24 @@ export const ReportDiscrepancyModal: React.FC<ReportDiscrepancyModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  const handleResetAndClose = useCallback(() => {
+    setIsSuccess(false);
+    setErrorMessage(null);
+    setNotes('');
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleResetAndClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleResetAndClose]);
 
   if (!isOpen) return null;
 
@@ -58,18 +76,14 @@ export const ReportDiscrepancyModal: React.FC<ReportDiscrepancyModalProps> = ({
     }
   };
 
-  const handleResetAndClose = () => {
-    setIsSuccess(false);
-    setErrorMessage(null);
-    setNotes('');
-    onClose();
-  };
-
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="report-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) handleResetAndClose();
+      }}
       style={{
         position: 'fixed',
         inset: 0,

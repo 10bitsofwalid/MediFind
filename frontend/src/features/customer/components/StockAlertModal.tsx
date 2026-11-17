@@ -1,5 +1,5 @@
 // frontend/src/features/customer/components/StockAlertModal.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { alertService, type StockAlertSubscription } from '../services/alertService';
 import { Bell, CheckCircle2, X, AlertTriangle, Loader, Mail } from 'lucide-react';
 
@@ -28,8 +28,6 @@ export const StockAlertModal: React.FC<StockAlertModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdAlert, setCreatedAlert] = useState<StockAlertSubscription | null>(null);
 
-  if (!isOpen) return null;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -54,18 +52,34 @@ export const StockAlertModal: React.FC<StockAlertModalProps> = ({
     }
   };
 
-  const handleResetAndClose = () => {
+  const handleResetAndClose = useCallback(() => {
     setCreatedAlert(null);
     setErrorMessage(null);
     setEmailOrPhone('');
     onClose();
-  };
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleResetAndClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleResetAndClose]);
+
+  if (!isOpen) return null;
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="alert-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) handleResetAndClose();
+      }}
       style={{
         position: 'fixed',
         inset: 0,
