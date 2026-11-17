@@ -6,6 +6,7 @@ import { AvailabilityStatus } from '../../components/AvailabilityStatus';
 import { FreshnessBadge } from '../../components/FreshnessBadge';
 import { SelectedPharmacyPanel } from './components/SelectedPharmacyPanel';
 import { ReportDiscrepancyModal } from './components/ReportDiscrepancyModal';
+import { ReservationModal } from './components/ReservationModal';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
 import { getDirectionsRoute, sanitizePhoneNumber } from './utils/routingUtils';
 import {
@@ -32,6 +33,8 @@ export const MedicineDetailPage: React.FC = () => {
   const [activeCallNumber, setActiveCallNumber] = useState<string | null>(null);
   const [reservationFeedback, setReservationFeedback] = useState<string | null>(null);
   const [reportingPharmacy, setReportingPharmacy] = useState<NearbyPharmacyResult | null>(null);
+  const [reservingPharmacy, setReservingPharmacy] = useState<NearbyPharmacyResult | null>(null);
+  const [reserveQuantity, setReserveQuantity] = useState<number>(1);
 
   useEffect(() => {
     let active = true;
@@ -100,9 +103,8 @@ export const MedicineDetailPage: React.FC = () => {
       return;
     }
 
-    setReservationFeedback(
-      `Hold request for ${quantity} unit(s) submitted to ${targetPharmacy.pharmacyName}. Reservation status will appear in your dashboard.`
-    );
+    setReserveQuantity(quantity);
+    setReservingPharmacy(targetPharmacy);
   };
 
   if (isLoading) {
@@ -522,6 +524,24 @@ export const MedicineDetailPage: React.FC = () => {
           medicineId={medicine.id}
           isOpen={true}
           onClose={() => setReportingPharmacy(null)}
+        />
+      )}
+
+      {/* Reservation Hold Modal */}
+      {reservingPharmacy && medicine && (
+        <ReservationModal
+          pharmacy={reservingPharmacy}
+          medicineName={medicine.name}
+          genericName={medicine.genericName}
+          strength={medicine.strength}
+          initialQuantity={reserveQuantity}
+          isOpen={true}
+          onClose={() => setReservingPharmacy(null)}
+          onSuccess={(record) => {
+            setReservationFeedback(
+              `Hold request confirmed! Pickup code is ${record.pickupCode} at ${record.pharmacyName}.`
+            );
+          }}
         />
       )}
 

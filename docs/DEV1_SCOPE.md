@@ -172,7 +172,32 @@
 
 ---
 
+## Phase 8 (Part 1 / Half) Summary: Customer Medicine Reservation Holds & Pickup Flow
+
+### Goals Accomplished
+1. **Customer Medicine Reservation Service (`reservationService.ts`):**
+   - Implemented `reservationService.createReservation()`: generates medicine hold requests with unique IDs (`resv_*`), initial `pending` status, 4-digit pickup code, and a standard 2-hour hold expiration window.
+   - Built `cancelReservation()` and `isExpired()` helpers with event broadcasting (`medifind:reservation_created`, `medifind:reservation_updated`) enabling real-time coordination with Dev 2's pharmacy reservation queue.
+2. **Accessible Customer Reservation Modal (`ReservationModal.tsx`):**
+   - Full ARIA compliance: `role="dialog"`, `aria-modal="true"`, `aria-labelledby="reservation-modal-title"`.
+   - Customer authentication check: gracefully instructs guests to sign in with Customer role to place medicine holds, protecting pharmacy inventory.
+   - Generates and presents a prominent 4-digit pickup code to be shown to the pharmacy counter upon arrival.
+   - Captures quantity, optional phone number for SMS updates, and notes for the pharmacist.
+3. **Detail View Integration (`MedicineDetailPage.tsx`):**
+   - Connected `SelectedPharmacyPanel` hold action to trigger `ReservationModal`.
+   - Displays real-time feedback with generated pickup code upon successful hold submission.
+4. **Automated Testing Suite (`customerReservation.test.mjs`):**
+   - 5 unit tests verifying hold creation, 4-digit pickup code generation, 2-hour expiration calculation, minimum quantity validation, pharmacyId requirement, cancellation notes, and expiration status detection.
+   - Total test count expanded to 67 tests (all 67 pass).
+   - ESLint: 0 errors, 0 warnings.
+   - Production build succeeds in 1.35s.
+
+---
+
 ### Files Created
+- `frontend/src/features/customer/services/reservationService.ts`: Customer medicine reservation service with 2-hour hold expiration and 4-digit pickup codes.
+- `frontend/src/features/customer/components/ReservationModal.tsx`: Accessible reservation dialog for placing medicine pickup holds.
+- `frontend/tests/customerReservation.test.mjs`: Test suite for Phase 8a reservation hold creation, cancellation, and validation.
 - `frontend/src/features/customer/services/reportService.ts`: Local & API report submission service with data persistence.
 - `frontend/src/features/customer/components/ReportDiscrepancyModal.tsx`: Accessible reporting dialog for customer stock discrepancies.
 - `frontend/tests/customerDiscrepancyAndRegression.test.mjs`: Test suite for Phase 7 report validation, accessibility, and guest customer journey.
