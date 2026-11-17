@@ -227,6 +227,7 @@
 ---
 
 ### Files Created
+- `frontend/tests/customerPhase9Regression.test.mjs`: Test suite for Phase 9 search tokenization, query sanitization, operating hours fallback, modal accessibility, and ErrorBoundary contracts.
 - `docs/KNOWN_LIMITATIONS.md`: Comprehensive edge cases, GPS limitations, and trust boundaries documentation.
 - `docs/DEMO_WALKTHROUGH.md`: Detailed evaluator and stakeholder walkthrough guide across all customer scenarios.
 - `frontend/src/features/customer/services/reservationService.ts`: Customer medicine reservation service with 2-hour hold expiration and 4-digit pickup codes.

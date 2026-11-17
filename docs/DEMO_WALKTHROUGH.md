@@ -113,7 +113,7 @@ This guide provides a comprehensive step-by-step walkthrough for evaluating and 
 To verify full system integrity, run the following in `frontend/`:
 
 ```bash
-# 1. Run all 70 unit and integration tests
+# 1. Run all 76 unit and integration tests across 5 suites
 npm test
 
 # 2. Verify zero ESLint warnings and errors
