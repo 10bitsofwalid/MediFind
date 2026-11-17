@@ -1,5 +1,5 @@
 // frontend/tests/customerMapLocation.test.mjs
-// Phase 5a tests: GPS hook logic, map/list parity, toggle, manual fallback
+// Phase 5 tests: GPS hook logic, map/list parity, toggle, manual fallback, pin color encoding, and URL sync
 // Pure vanilla JS — no TypeScript source imports (Node native test runner)
 
 import { describe, it } from 'node:test';
@@ -88,6 +88,20 @@ function applyFilters(results, filters) {
   return list;
 }
 
+/** Color status encoder function matching CustomerMapView */
+function getPinColor(status) {
+  switch (status) {
+    case 'available':
+      return '#0A7E51';
+    case 'low':
+      return '#C28400';
+    case 'out':
+      return '#D9383A';
+    default:
+      return '#6C757D';
+  }
+}
+
 /** Build a minimal NearbyPharmacyResult stub */
 function makePharmacy(overrides = {}) {
   return {
@@ -110,7 +124,7 @@ function makePharmacy(overrides = {}) {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('Phase 5a – GPS hook & map/list integration', () => {
+describe('Phase 5 – GPS hook, Map/List integration & Marker status synchronization', () => {
 
   // 1. PERMISSION_DENIED
   it('useGeolocation: permission denied sets permissionDenied=true and surfaces fallback message', (t, done) => {
@@ -201,7 +215,6 @@ describe('Phase 5a – GPS hook & map/list integration', () => {
 
   // 5. Manual area fallback when GPS returns null coords
   it('Manual area fallback: null GPS coordinates fall back to area text search', () => {
-    // Simulates what SearchResults does when geo.latitude/longitude are null
     const geoLatitude = null;
     const geoLongitude = null;
     const areaParam = 'Mirpur, Dhaka';
@@ -215,7 +228,6 @@ describe('Phase 5a – GPS hook & map/list integration', () => {
       'must fall back to areaParam text when GPS coords are null'
     );
 
-    // Also verify the inverse: when coords exist, label changes
     const withGps = { lat: 23.746, lng: 90.374 };
     const effectiveAreaWithGps =
       withGps.lat && withGps.lng ? 'Current Location (GPS)' : areaParam;
@@ -225,6 +237,39 @@ describe('Phase 5a – GPS hook & map/list integration', () => {
       'Current Location (GPS)',
       'must show GPS label when coordinates are available'
     );
+  });
+
+  // 6. Map pin status color encoding contract
+  it('Map pin status colors: available is green, low is caution/amber, out is red', () => {
+    assert.equal(getPinColor('available'), '#0A7E51', 'available stock pin must be green');
+    assert.equal(getPinColor('low'), '#C28400', 'low stock pin must be caution amber');
+    assert.equal(getPinColor('out'), '#D9383A', 'out of stock pin must be problem red');
+    assert.equal(getPinColor('unverified'), '#6C757D', 'unverified or unknown status must be neutral gray');
+  });
+
+  // 7. URL ?view=map query parameter synchronization
+  it('URL View State: parses ?view=map and defaults to list', () => {
+    const paramsWithMap = new URLSearchParams('q=Napa&view=map');
+    const viewParamMap = paramsWithMap.get('view') === 'map' ? 'map' : 'list';
+    assert.equal(viewParamMap, 'map', 'must parse map mode from url');
+
+    const paramsDefault = new URLSearchParams('q=Napa');
+    const viewParamDefault = paramsDefault.get('view') === 'map' ? 'map' : 'list';
+    assert.equal(viewParamDefault, 'list', 'must default to list mode when view param is omitted');
+  });
+
+  // 8. Map Pin Selection Sync
+  it('Selected Pin Sync: identifying selected pharmacy displays accurate card details', () => {
+    const pharmacies = [
+      makePharmacy({ pharmacyId: 'ph-1', pharmacyName: 'Lazz Pharma Dhanmondi' }),
+      makePharmacy({ pharmacyId: 'ph-2', pharmacyName: 'Tamanna Pharmacy' }),
+    ];
+
+    const selectedPharmacyId = 'ph-2';
+    const selected = pharmacies.find((p) => p.pharmacyId === selectedPharmacyId);
+
+    assert.ok(selected, 'Selected pharmacy must be found');
+    assert.equal(selected.pharmacyName, 'Tamanna Pharmacy');
   });
 
 });

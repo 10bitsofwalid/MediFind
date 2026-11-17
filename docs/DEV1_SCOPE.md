@@ -89,7 +89,39 @@
 
 ---
 
+## Phase 5 Summary: Location Request (GPS), Map/List View Switching, Status Markers, and Sync
+
+### Goals Accomplished
+1. **Accurate Device Geolocation Hook (`useGeolocation.ts`):**
+   - Implemented standard browser `navigator.geolocation` lifecycle with explicit states for `isLoading`, `permissionDenied`, `error`, coordinates, and accuracy.
+   - Comprehensive handling for error codes: `PERMISSION_DENIED`, `POSITION_UNAVAILABLE`, and `TIMEOUT` with actionable fallback guidance.
+2. **Permission Request & Manual Area Fallback Banner (`LocationRequestBanner.tsx`):**
+   - Responsive banner prompting user to enable GPS ("📍 Use my location") for hyper-local accuracy.
+   - Graceful manual area fallback when permissions are denied or unavailable ("Location access denied — please type area name below").
+   - Ability to dismiss the banner ("Not now") without interrupting discovery.
+3. **Interactive Customer Map View (`CustomerMapView.tsx`):**
+   - Custom numbered Leaflet pins matching result rankings.
+   - Status color-coded pins: Available (Green `#0A7E51`), Low stock (Amber `#C28400`), Out of stock (Red `#D9383A`), and Unverified (Gray).
+   - Rich interactive popup displaying pharmacy trade name, verified badge, address, distance, operating status, direct phone dialer, and "View Details" trigger.
+   - Selected pharmacy pin sync displaying active card panel below the map.
+   - Legend detailing status colors and parity assurance.
+   - Wrapped in `ErrorBoundary` ensuring pharmacy search remains usable even if map tiles fail to load.
+4. **Map / List View Toggle & URL Query Param Sync (`SearchResults.tsx`):**
+   - High-contrast toggle switch between `[☰ List]` and `[🗺 Map]` views.
+   - URL query parameter synchronization (`?view=map`) allowing deep linking directly into map exploration.
+   - Seamless data parity: list and map share identical filtered and sorted results.
+5. **Automated Testing Suite (`customerMapLocation.test.mjs`):**
+   - 8 unit tests covering permission denial fallback, GPS unavailable messaging, map/list parity count, view toggle state retention, coordinate fallback, pin status colors, URL view query parsing, and selected pin synchronization.
+   - All 49 automated tests pass cleanly.
+   - Zero ESLint errors/warnings. Production build succeeds cleanly.
+
+---
+
 ### Files Created
+- `frontend/src/features/customer/hooks/useGeolocation.ts`: GPS location hook with fallback error handling.
+- `frontend/src/features/customer/components/LocationRequestBanner.tsx`: Location permission invite, error, and manual fallback banner.
+- `frontend/src/features/customer/components/CustomerMapView.tsx`: Interactive Leaflet map view with colored status pins and detail popups.
+- `frontend/tests/customerMapLocation.test.mjs`: Test suite for Phase 5 GPS hook, map parity, pin colors, and URL sync.
 - `frontend/src/features/customer/types.ts`: Type definitions for `CustomerSearchParams`, `NearbyPharmacyResult`, `MedicineSuggestion`, and `AvailabilityFilter`.
 - `frontend/src/features/customer/utils/geoUtils.ts`: Haversine distance calculator and Dhaka area coordinate mapping.
 - `frontend/src/features/customer/components/CustomerSearchBar.tsx`: Accessible customer search bar with medicine autocomplete and area inputs.

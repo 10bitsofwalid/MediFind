@@ -28,6 +28,7 @@ export const SearchResults: React.FC = () => {
 
   const queryParam = searchParams.get('q') || 'Paracetamol 500 mg';
   const areaParam = searchParams.get('area') || 'Dhanmondi, Dhaka';
+  const viewParam = (searchParams.get('view') as ViewMode) || 'list';
 
   const [currentMedicine, setCurrentMedicine] = useState<MedicineCatalogueDetails | null>(null);
   const [results, setResults] = useState<NearbyPharmacyResult[]>([]);
@@ -36,8 +37,20 @@ export const SearchResults: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeCallNumber, setActiveCallNumber] = useState<string | null>(null);
   const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | undefined>(undefined);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false);
+
+  // Synchronize view mode with URL search param
+  const viewMode: ViewMode = viewParam === 'map' ? 'map' : 'list';
+
+  const setViewMode = (mode: ViewMode) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (mode === 'map') {
+      nextParams.set('view', 'map');
+    } else {
+      nextParams.delete('view');
+    }
+    setSearchParams(nextParams);
+  };
 
   // GPS hook
   const geo = useGeolocation();
@@ -374,6 +387,7 @@ export const SearchResults: React.FC = () => {
               results={filteredAndSortedResults}
               selectedPharmacyId={selectedPharmacyId}
               onSelectPharmacy={handleMapSelectPharmacy}
+              onCallPharmacy={handleCallPharmacy}
               centerLatitude={geo.latitude ?? undefined}
               centerLongitude={geo.longitude ?? undefined}
             />
