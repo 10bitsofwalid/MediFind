@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { AvailabilityStatus } from '../../../components/AvailabilityStatus';
 import { FreshnessBadge } from '../../../components/FreshnessBadge';
 import { useAuth } from '../../../app/useAuth';
+import { getDirectionsRoute, sanitizePhoneNumber } from '../utils/routingUtils';
 import {
   Clock,
   Phone,
@@ -12,6 +13,8 @@ import {
   Minus,
   Plus,
   AlertCircle,
+  PhoneOff,
+  ExternalLink,
 } from 'lucide-react';
 import type { NearbyPharmacyResult } from '../types';
 
@@ -31,8 +34,10 @@ export const SelectedPharmacyPanel: React.FC<SelectedPharmacyPanelProps> = ({
   const { user } = useAuth();
   const [quantity, setQuantity] = useState(1);
   const [showHoursModal, setShowHoursModal] = useState(false);
+  const [routingError, setRoutingError] = useState<string | null>(null);
 
   const isCustomerLoggedIn = user && user.role === 'CUSTOMER';
+  const cleanPhone = sanitizePhoneNumber(pharmacy.phone);
 
   const handleDecrement = () => {
     if (quantity > 1) setQuantity(quantity - 1);
@@ -45,24 +50,76 @@ export const SelectedPharmacyPanel: React.FC<SelectedPharmacyPanelProps> = ({
 
   const isOutOfStock = pharmacy.stockStatus === 'out';
 
+  const handleDirectionsClick = () => {
+    try {
+      setRoutingError(null);
+      const route = getDirectionsRoute({
+        latitude: pharmacy.latitude,
+        longitude: pharmacy.longitude,
+        address: pharmacy.address,
+        pharmacyName: pharmacy.pharmacyName,
+      });
+
+      if (!route.hasExactCoordinates) {
+        setRoutingError('Exact GPS coordinates not on file. Opening search on Google Maps instead.');
+      }
+
+      onGetDirections(pharmacy);
+    } catch {
+      setRoutingError('Unable to open map routing. Please check your network connection.');
+    }
+  };
+
   return (
     <aside
       aria-label={`Selected pharmacy details for ${pharmacy.pharmacyName}`}
-      className="card"
       style={{
         backgroundColor: 'var(--color-surface-panel)',
-        border: '1px solid var(--color-border-default)',
         borderRadius: 'var(--radius-xl)',
+        border: '2px solid var(--color-action-primary)',
         padding: '20px',
-        boxShadow: 'var(--shadow-md)',
         display: 'flex',
         flexDirection: 'column',
         gap: '16px',
+        boxShadow: 'var(--shadow-md)',
         position: 'sticky',
-        top: '80px',
+        top: '20px',
+        boxSizing: 'border-box',
+        width: '100%',
+        maxWidth: '100%',
       }}
     >
-      {/* Header: Pharmacy Name & Verified Status */}
+      {/* Panel Top Label */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border-default)', paddingBottom: '10px' }}>
+        <span
+          style={{
+            fontSize: '11px',
+            fontWeight: 700,
+            color: 'var(--color-action-primary)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+          }}
+        >
+          Selected Pharmacy
+        </span>
+        {pharmacy.isDemoData && (
+          <span
+            style={{
+              fontSize: '10px',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              color: 'var(--color-status-neutral)',
+              backgroundColor: 'var(--color-status-neutral-bg)',
+              padding: '2px 6px',
+              borderRadius: 'var(--radius-sm)',
+            }}
+          >
+            Demo Data
+          </span>
+        )}
+      </div>
+
+      {/* Pharmacy Header Info */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <h3
@@ -75,24 +132,23 @@ export const SelectedPharmacyPanel: React.FC<SelectedPharmacyPanelProps> = ({
           >
             {pharmacy.pharmacyName}
           </h3>
-
           {pharmacy.isVerified ? (
             <span
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '3px',
+                gap: '4px',
                 fontSize: '11px',
                 fontWeight: 600,
-                color: 'var(--color-trust-primary, #0B6BCB)',
-                backgroundColor: 'var(--color-trust-subtle, #EBF5FF)',
+                color: 'var(--color-action-primary)',
+                backgroundColor: 'rgba(23, 107, 135, 0.08)',
                 padding: '2px 8px',
                 borderRadius: 'var(--radius-full)',
               }}
-              title="Verified licensed pharmacy"
+              title="Verified by MediFind inspection"
             >
               <CheckCircle2 size={12} aria-hidden="true" />
-              <span>Verified</span>
+              Verified
             </span>
           ) : (
             <span
@@ -219,7 +275,7 @@ export const SelectedPharmacyPanel: React.FC<SelectedPharmacyPanelProps> = ({
         </div>
       </div>
 
-      {/* Reserve for Pickup Button (Sign-in gated per Product Rules & UI Design Page 5) */}
+      {/* Reserve for Pickup Button (Sign-in gated) */}
       <div>
         <button
           type="button"
@@ -259,14 +315,15 @@ export const SelectedPharmacyPanel: React.FC<SelectedPharmacyPanelProps> = ({
         )}
       </div>
 
-      {/* Action Buttons: Get Directions & Call */}
-      <div style={{ display: 'flex', gap: '8px', paddingTop: '4px' }}>
+      {/* Action Buttons: Get Directions & Call (with graceful fallback) */}
+      <div style={{ display: 'flex', gap: '8px', paddingTop: '4px', flexWrap: 'wrap' }}>
         <button
           type="button"
-          onClick={() => onGetDirections(pharmacy)}
+          onClick={handleDirectionsClick}
           className="btn-secondary"
           style={{
             flex: 1,
+            minWidth: '120px',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -283,13 +340,14 @@ export const SelectedPharmacyPanel: React.FC<SelectedPharmacyPanelProps> = ({
           <span>Get directions</span>
         </button>
 
-        {pharmacy.phone && (
+        {cleanPhone ? (
           <button
             type="button"
-            onClick={() => onCall(pharmacy.phone!)}
+            onClick={() => onCall(cleanPhone)}
             className="btn-secondary"
             style={{
               flex: 1,
+              minWidth: '120px',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -300,13 +358,55 @@ export const SelectedPharmacyPanel: React.FC<SelectedPharmacyPanelProps> = ({
               fontWeight: 600,
               cursor: 'pointer',
             }}
-            aria-label={`Call ${pharmacy.pharmacyName}`}
+            aria-label={`Call ${pharmacy.pharmacyName} at ${cleanPhone}`}
           >
             <Phone size={14} aria-hidden="true" />
             <span>Call pharmacy</span>
           </button>
+        ) : (
+          <div
+            style={{
+              flex: 1,
+              minWidth: '120px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              padding: '10px 12px',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '12px',
+              color: 'var(--color-text-muted)',
+              backgroundColor: 'var(--color-surface-canvas)',
+              border: '1px dashed var(--color-border-default)',
+            }}
+            aria-label="Phone number not listed for this pharmacy"
+          >
+            <PhoneOff size={14} aria-hidden="true" />
+            <span>No phone listed</span>
+          </div>
         )}
       </div>
+
+      {/* Routing notification / fallback banner if coordinates missing */}
+      {routingError && (
+        <div
+          role="status"
+          style={{
+            fontSize: '11px',
+            color: 'var(--color-status-caution, #b45309)',
+            backgroundColor: 'var(--color-surface-warning, #fffbeb)',
+            padding: '8px 10px',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--color-status-caution, #f59e0b)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          <ExternalLink size={12} aria-hidden="true" />
+          <span>{routingError}</span>
+        </div>
+      )}
 
       {/* Quick link to view hours breakdown */}
       <div style={{ textAlign: 'center', fontSize: '12px' }}>
@@ -318,56 +418,59 @@ export const SelectedPharmacyPanel: React.FC<SelectedPharmacyPanelProps> = ({
             border: 'none',
             color: 'var(--color-action-primary)',
             fontSize: '12px',
-            fontWeight: 600,
             cursor: 'pointer',
-            padding: 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '4px',
+            textDecoration: 'underline',
+            padding: '4px',
           }}
+          aria-expanded={showHoursModal}
         >
-          <Clock size={12} />
-          <span>{showHoursModal ? 'Hide operating hours' : 'View daily opening hours'}</span>
+          {showHoursModal ? 'Hide operating hours' : 'View weekly schedule'}
         </button>
       </div>
 
+      {/* Inline schedule breakdown toggle */}
       {showHoursModal && (
         <div
           style={{
-            padding: '10px 12px',
+            padding: '12px',
             backgroundColor: 'var(--color-surface-canvas)',
             borderRadius: 'var(--radius-md)',
             border: '1px solid var(--color-border-default)',
             fontSize: '12px',
-            color: 'var(--color-text-secondary)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
           }}
+          role="region"
+          aria-label="Weekly operating schedule"
         >
-          <strong style={{ display: 'block', color: 'var(--color-text-primary)', marginBottom: '4px' }}>
-            Daily Schedule:
-          </strong>
-          <div>Monday – Sunday: 08:00 AM – 10:00 PM</div>
-          <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-            * Emergency stock verification available via phone call.
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+            <Clock size={14} aria-hidden="true" />
+            <span>Operating Schedule</span>
+          </div>
+          <div style={{ color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>
+            {pharmacy.openingHoursText}
           </div>
         </div>
       )}
 
-      {/* Responsible Shopping Reminder */}
+      {/* Clinical Disclaimer */}
       <div
         style={{
           display: 'flex',
           alignItems: 'flex-start',
-          gap: '6px',
+          gap: '8px',
           fontSize: '11px',
-          color: 'var(--color-text-secondary)',
-          lineHeight: 1.4,
-          paddingTop: '8px',
-          borderTop: '1px solid var(--color-border-default)',
+          color: 'var(--color-text-muted)',
+          backgroundColor: 'var(--color-surface-canvas)',
+          padding: '10px 12px',
+          borderRadius: 'var(--radius-md)',
+          lineHeight: '1.4',
         }}
       >
-        <AlertCircle size={14} color="var(--color-action-primary)" style={{ flexShrink: 0, marginTop: '1px' }} />
+        <AlertCircle size={14} style={{ flexShrink: 0, marginTop: '2px' }} aria-hidden="true" />
         <span>
-          Availability is pharmacy-reported and subject to change. Please call ahead before travelling.
+          MediFind facilitates availability verification. Prices, prescriptions, and exact dispense decisions are governed strictly by the dispensing pharmacy.
         </span>
       </div>
     </aside>

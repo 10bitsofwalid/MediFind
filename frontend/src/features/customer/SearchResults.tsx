@@ -10,6 +10,7 @@ import { CustomerMapView } from './components/CustomerMapView';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
 import { medicineService, type MedicineCatalogueDetails } from '../../services/medicineService';
 import { useGeolocation } from './hooks/useGeolocation';
+import { sanitizePhoneNumber } from './utils/routingUtils';
 import { ArrowLeft, MapPin, Map, List } from 'lucide-react';
 import type { NearbyPharmacyResult, AvailabilityFilter } from './types';
 
@@ -179,8 +180,9 @@ export const SearchResults: React.FC = () => {
   };
 
   const handleCallPharmacy = (phone: string) => {
-    setActiveCallNumber(phone);
-    window.location.href = `tel:${phone}`;
+    const cleanPhone = sanitizePhoneNumber(phone) || phone;
+    setActiveCallNumber(cleanPhone);
+    window.location.href = `tel:${cleanPhone}`;
   };
 
   const handleRequestLocation = () => {

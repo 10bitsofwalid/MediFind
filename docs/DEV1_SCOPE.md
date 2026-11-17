@@ -117,7 +117,35 @@
 
 ---
 
+## Phase 6 Summary: Call & Route Actions, Handling Missing Phone/Coordinates, Routing Failure, and 360px Polish
+
+### Goals Accomplished
+1. **Robust Routing & Navigation Utilities (`routingUtils.ts`):**
+   - Implemented `isValidCoordinate()` to ensure latitudes and longitudes are present, non-zero, and within geographical boundaries.
+   - Built `getDirectionsRoute()`: generates exact GPS directions URL (`destination=lat,lng`) when coordinates exist, or falls back gracefully to a structured search query (`query=pharmacy+address+Dhaka`) when coordinates are missing, zero, or unverified.
+   - Created `sanitizePhoneNumber()`: scrubs non-compliant phone strings, rejects placeholders ("N/A", "None", invalid lengths), and formats compliant `tel:` URIs.
+2. **Missing Phone & Routing Failure UI in `SelectedPharmacyPanel.tsx`:**
+   - Replaced broken `tel:` actions with a styled "No phone listed" badge when a pharmacy lacks a valid contact number.
+   - Handled routing execution errors and displayed warning banner when exact GPS coordinates are missing, notifying the user that address search is being used instead.
+   - Improved responsive layout and flex wrapping down to 360px mobile viewports.
+3. **Card-Level Routing & Contact Polish in `SearchResultsList.tsx`:**
+   - Added direct "Directions" link to every search result card, powered by `getDirectionsRoute()`.
+   - Polished phone call button with `sanitizePhoneNumber()`, displaying fallback badge if contact number is unavailable.
+   - Fully optimized card layout for narrow mobile screens (360px) to prevent button overflow.
+4. **Detail Screen Call & Directions Hardening (`MedicineDetailPage.tsx` & `SearchResults.tsx`):**
+   - Sanitized all direct dial calls across customer discovery views.
+   - Ensured external directions open securely with `noopener,noreferrer`.
+5. **Automated Testing Suite (`customerRoutingAndActions.test.mjs`):**
+   - 7 unit tests verifying valid phone formatting, missing/placeholder phone rejection, Dhaka coordinate validation, (0,0) coordinate rejection, exact GPS routing URLs, and address fallback search URLs.
+   - Total test count expanded to 56 tests (all 56 pass).
+   - ESLint: 0 errors, 0 warnings.
+   - Production build succeeds in 1.35s.
+
+---
+
 ### Files Created
+- `frontend/src/features/customer/utils/routingUtils.ts`: Coordinate validation, Google Maps routing generator, and phone number sanitizer.
+- `frontend/tests/customerRoutingAndActions.test.mjs`: Test suite for Phase 6 routing, phone sanitization, and fallback mechanisms.
 - `frontend/src/features/customer/hooks/useGeolocation.ts`: GPS location hook with fallback error handling.
 - `frontend/src/features/customer/components/LocationRequestBanner.tsx`: Location permission invite, error, and manual fallback banner.
 - `frontend/src/features/customer/components/CustomerMapView.tsx`: Interactive Leaflet map view with colored status pins and detail popups.

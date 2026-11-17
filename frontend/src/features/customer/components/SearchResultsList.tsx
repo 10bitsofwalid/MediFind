@@ -2,7 +2,8 @@
 import React from 'react';
 import { AvailabilityStatus } from '../../../components/AvailabilityStatus';
 import { FreshnessBadge } from '../../../components/FreshnessBadge';
-import { ChevronRight, Phone, CheckCircle2, AlertTriangle, RefreshCw, SearchX } from 'lucide-react';
+import { ChevronRight, Phone, PhoneOff, Navigation, CheckCircle2, AlertTriangle, RefreshCw, SearchX } from 'lucide-react';
+import { getDirectionsRoute, sanitizePhoneNumber } from '../utils/routingUtils';
 import type { NearbyPharmacyResult } from '../types';
 
 interface SearchResultsListProps {
@@ -354,7 +355,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
             <FreshnessBadge updatedAt={pharmacy.updatedAt} isStale={pharmacy.isStale} />
           </div>
 
-          {/* Action Row: Direct Call & Pharmacy Details */}
+          {/* Action Row: Direct Call, Get Directions, & Pharmacy Details */}
           <div
             style={{
               display: 'flex',
@@ -366,33 +367,80 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
               gap: '8px',
             }}
           >
-            {pharmacy.phone ? (
-              <button
-                type="button"
-                onClick={() => onCallPharmacy?.(pharmacy.phone!)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {sanitizePhoneNumber(pharmacy.phone) ? (
+                <button
+                  type="button"
+                  onClick={() => onCallPharmacy?.(sanitizePhoneNumber(pharmacy.phone)!)}
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: '1px solid var(--color-border-default)',
+                    borderRadius: 'var(--radius-md)',
+                    color: 'var(--color-action-primary)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    cursor: 'pointer',
+                    padding: '6px 10px',
+                  }}
+                  aria-label={`Call ${pharmacy.pharmacyName} at ${pharmacy.phone}`}
+                >
+                  <Phone size={13} aria-hidden="true" />
+                  <span>Call</span>
+                </button>
+              ) : (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    color: 'var(--color-text-muted)',
+                    padding: '4px 8px',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'var(--color-surface-canvas)',
+                    border: '1px dashed var(--color-border-default)',
+                  }}
+                  title="No direct phone number reported"
+                >
+                  <PhoneOff size={12} aria-hidden="true" />
+                  <span>No phone</span>
+                </span>
+              )}
+
+              {/* Get Directions link */}
+              <a
+                href={
+                  getDirectionsRoute({
+                    latitude: pharmacy.latitude,
+                    longitude: pharmacy.longitude,
+                    address: pharmacy.address,
+                    pharmacyName: pharmacy.pharmacyName,
+                  }).url
+                }
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{
-                  backgroundColor: 'transparent',
-                  border: '1px solid var(--color-border-default)',
-                  borderRadius: 'var(--radius-md)',
-                  color: 'var(--color-action-primary)',
-                  fontSize: '13px',
-                  fontWeight: 600,
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  cursor: 'pointer',
-                  padding: '6px 12px',
+                  gap: '4px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: 'var(--color-text-secondary)',
+                  textDecoration: 'none',
+                  padding: '6px 10px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border-default)',
+                  backgroundColor: 'var(--color-surface-canvas)',
                 }}
-                aria-label={`Call ${pharmacy.pharmacyName} at ${pharmacy.phone}`}
+                aria-label={`Get directions to ${pharmacy.pharmacyName}`}
               >
-                <Phone size={14} aria-hidden="true" />
-                <span>Call to confirm</span>
-              </button>
-            ) : (
-              <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                Phone not listed
-              </span>
-            )}
+                <Navigation size={13} aria-hidden="true" />
+                <span>Directions</span>
+              </a>
+            </div>
 
             <button
               type="button"
@@ -402,16 +450,16 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
-                fontSize: '13px',
+                fontSize: '12px',
                 fontWeight: 600,
-                padding: '6px 14px',
+                padding: '6px 12px',
                 borderRadius: 'var(--radius-md)',
                 cursor: 'pointer',
               }}
               aria-label={`View pharmacy and medicine details for ${pharmacy.pharmacyName}`}
             >
-              <span>View pharmacy</span>
-              <ChevronRight size={15} aria-hidden="true" />
+              <span>View details</span>
+              <ChevronRight size={14} aria-hidden="true" />
             </button>
           </div>
         </article>

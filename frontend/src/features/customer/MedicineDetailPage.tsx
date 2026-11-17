@@ -6,6 +6,7 @@ import { AvailabilityStatus } from '../../components/AvailabilityStatus';
 import { FreshnessBadge } from '../../components/FreshnessBadge';
 import { SelectedPharmacyPanel } from './components/SelectedPharmacyPanel';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
+import { getDirectionsRoute, sanitizePhoneNumber } from './utils/routingUtils';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -72,13 +73,19 @@ export const MedicineDetailPage: React.FC = () => {
   }, [id, initialQuery, pharmacyIdParam]);
 
   const handleCall = (phone: string) => {
-    setActiveCallNumber(phone);
-    window.location.href = `tel:${phone}`;
+    const clean = sanitizePhoneNumber(phone) || phone;
+    setActiveCallNumber(clean);
+    window.location.href = `tel:${clean}`;
   };
 
   const handleGetDirections = (targetPharmacy: NearbyPharmacyResult) => {
-    const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${targetPharmacy.latitude},${targetPharmacy.longitude}`;
-    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+    const route = getDirectionsRoute({
+      latitude: targetPharmacy.latitude,
+      longitude: targetPharmacy.longitude,
+      address: targetPharmacy.address,
+      pharmacyName: targetPharmacy.pharmacyName,
+    });
+    window.open(route.url, '_blank', 'noopener,noreferrer');
   };
 
   const handleReserveClick = (targetPharmacy: NearbyPharmacyResult, quantity: number) => {
