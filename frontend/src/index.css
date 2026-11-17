@@ -152,6 +152,23 @@ a:focus-visible {
   }
 }
 
+/* Shimmer Skeleton Loaders */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #f0f2f5 25%, #e4e7eb 50%, #f0f2f5 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 /* Responsive Overrides & 360px Mobile Polish */
 .mobile-filter-toggle {
   display: none;

@@ -128,13 +128,38 @@ export const MedicineDetailPage: React.FC = () => {
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '12px',
+          gap: '16px',
+          boxSizing: 'border-box',
+          width: '100%',
         }}
       >
         <div className="spinner" aria-hidden="true" style={{ width: '36px', height: '36px' }} />
         <span style={{ fontSize: '15px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
           Loading medicine specifications and verified pharmacy availability...
         </span>
+
+        {/* Skeleton Detail Placeholder */}
+        <div
+          style={{
+            width: '100%',
+            maxWidth: '720px',
+            padding: '20px',
+            backgroundColor: 'var(--color-surface-panel)',
+            borderRadius: 'var(--radius-xl)',
+            border: '1px solid var(--color-border-default)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+            marginTop: '8px',
+          }}
+        >
+          <div className="skeleton-shimmer" style={{ width: '240px', height: '22px' }} />
+          <div className="skeleton-shimmer" style={{ width: '180px', height: '14px' }} />
+          <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+            <div className="skeleton-shimmer" style={{ width: '100px', height: '28px', borderRadius: 'var(--radius-full)' }} />
+            <div className="skeleton-shimmer" style={{ width: '140px', height: '28px', borderRadius: 'var(--radius-full)' }} />
+          </div>
+        </div>
       </div>
     );
   }

@@ -42,20 +42,51 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '48px 16px',
+          padding: '36px 16px',
           backgroundColor: 'var(--color-surface-panel)',
           borderRadius: 'var(--radius-xl)',
           border: '1px solid var(--color-border-default)',
-          gap: '14px',
+          gap: '16px',
+          width: '100%',
+          boxSizing: 'border-box',
         }}
       >
         <div className="spinner" aria-hidden="true" style={{ width: '36px', height: '36px' }} />
-        <span style={{ fontSize: '15px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-          Checking verified pharmacy availability...
-        </span>
-        <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-          Matching "{searchQuery}" against nearby pharmacy stock reports
-        </span>
+        <div style={{ textAlign: 'center' }}>
+          <span style={{ fontSize: '15px', fontWeight: 600, color: 'var(--color-text-primary)', display: 'block' }}>
+            Checking verified pharmacy availability...
+          </span>
+          <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '4px', display: 'block' }}>
+            Matching "{searchQuery}" against nearby pharmacy stock reports
+          </span>
+        </div>
+
+        {/* Skeleton placeholder cards for visual continuity */}
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
+          {[1, 2].map((i) => (
+            <div
+              key={i}
+              style={{
+                padding: '16px',
+                borderRadius: 'var(--radius-lg)',
+                border: '1px solid var(--color-border-default)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="skeleton-shimmer" style={{ width: '160px', height: '16px' }} />
+                <div className="skeleton-shimmer" style={{ width: '60px', height: '14px' }} />
+              </div>
+              <div className="skeleton-shimmer" style={{ width: '220px', height: '12px' }} />
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                <div className="skeleton-shimmer" style={{ width: '90px', height: '24px', borderRadius: 'var(--radius-full)' }} />
+                <div className="skeleton-shimmer" style={{ width: '110px', height: '24px', borderRadius: 'var(--radius-full)' }} />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
