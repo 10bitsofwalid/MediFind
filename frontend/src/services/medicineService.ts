@@ -380,12 +380,11 @@ export const medicineService = {
       }
 
       // Check if medicine matches known drugs
-      const isKnown = MASTER_MEDICINE_CATALOGUE.some(
-        (m) =>
-          m.name.toLowerCase().includes(queryLower) ||
-          m.genericName.toLowerCase().includes(queryLower) ||
-          m.strength.toLowerCase().includes(queryLower)
-      );
+      const queryWords = queryLower.split(/\s+/).filter(Boolean);
+      const isKnown = MASTER_MEDICINE_CATALOGUE.some((m) => {
+        const targetString = `${m.name} ${m.genericName} ${m.strength}`.toLowerCase();
+        return queryWords.every((word) => targetString.includes(word));
+      });
 
       if (!isKnown) {
         continue;
