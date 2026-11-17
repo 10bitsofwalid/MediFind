@@ -85,9 +85,11 @@ export const HomePage: React.FC = () => {
   const [activeCallNumber, setActiveCallNumber] = useState<string | null>(null);
 
   const handleSearch = ({ query, area, useLocation }: { query: string; area: string; useLocation: boolean }) => {
+    const trimmedQ = query.trim();
+    const trimmedArea = area.trim();
     const params = new URLSearchParams();
-    if (query) params.set('q', query);
-    if (area) params.set('area', area);
+    if (trimmedQ) params.set('q', trimmedQ);
+    if (trimmedArea) params.set('area', trimmedArea);
     if (useLocation) params.set('geo', '1');
     navigate(`/search?${params.toString()}`);
   };

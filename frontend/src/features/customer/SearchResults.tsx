@@ -29,8 +29,10 @@ export const SearchResults: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const queryParam = searchParams.get('q') || 'Paracetamol 500 mg';
-  const areaParam = searchParams.get('area') || 'Dhanmondi, Dhaka';
+  const rawQ = searchParams.get('q');
+  const queryParam = rawQ && rawQ.trim() ? rawQ.trim() : 'Paracetamol 500 mg';
+  const rawArea = searchParams.get('area');
+  const areaParam = rawArea && rawArea.trim() ? rawArea.trim() : 'Dhanmondi, Dhaka';
   const viewParam = (searchParams.get('view') as ViewMode) || 'list';
 
   const [currentMedicine, setCurrentMedicine] = useState<MedicineCatalogueDetails | null>(null);

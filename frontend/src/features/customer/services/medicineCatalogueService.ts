@@ -103,12 +103,11 @@ export const medicineCatalogueService = {
       // Backend not yet available or offline - use seeded catalogue fallback
     }
 
-    return CATALOGUE_SEED.filter(
-      (item) =>
-        item.name.toLowerCase().includes(query) ||
-        item.genericName.toLowerCase().includes(query) ||
-        item.strength.toLowerCase().includes(query)
-    );
+    const queryWords = query.split(/\s+/).filter(Boolean);
+    return CATALOGUE_SEED.filter((item) => {
+      const target = `${item.name} ${item.genericName} ${item.strength}`.toLowerCase();
+      return queryWords.every((word) => target.includes(word));
+    });
   },
 
   /**
