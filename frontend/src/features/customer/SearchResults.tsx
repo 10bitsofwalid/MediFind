@@ -8,6 +8,7 @@ import { SearchFilterBar, type FilterState } from './components/SearchFilterBar'
 import { LocationRequestBanner } from './components/LocationRequestBanner';
 import { CustomerMapView } from './components/CustomerMapView';
 import { ReportDiscrepancyModal } from './components/ReportDiscrepancyModal';
+import { StockAlertModal } from './components/StockAlertModal';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
 import { medicineService, type MedicineCatalogueDetails } from '../../services/medicineService';
 import { useGeolocation } from './hooks/useGeolocation';
@@ -41,6 +42,7 @@ export const SearchResults: React.FC = () => {
   const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | undefined>(undefined);
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false);
   const [reportingPharmacy, setReportingPharmacy] = useState<NearbyPharmacyResult | null>(null);
+  const [alertTargetMedicine, setAlertTargetMedicine] = useState<string | null>(null);
 
   // Synchronize view mode with URL search param
   const viewMode: ViewMode = viewParam === 'map' ? 'map' : 'list';
@@ -386,6 +388,7 @@ export const SearchResults: React.FC = () => {
               onCallPharmacy={handleCallPharmacy}
               onSelectAlternative={handleSelectAlternative}
               onReportDiscrepancy={(pharmacy) => setReportingPharmacy(pharmacy)}
+              onSubscribeAlert={(query) => setAlertTargetMedicine(query)}
             />
           ) : (
             <CustomerMapView
@@ -408,6 +411,18 @@ export const SearchResults: React.FC = () => {
           medicineId={currentMedicine?.id || 'unknown'}
           isOpen={true}
           onClose={() => setReportingPharmacy(null)}
+        />
+      )}
+
+      {/* Stock Restock Alert Modal */}
+      {alertTargetMedicine && (
+        <StockAlertModal
+          medicineName={currentMedicine?.name || alertTargetMedicine}
+          genericName={currentMedicine?.genericName}
+          strength={currentMedicine?.strength}
+          area={areaParam}
+          isOpen={true}
+          onClose={() => setAlertTargetMedicine(null)}
         />
       )}
 

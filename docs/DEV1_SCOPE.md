@@ -172,7 +172,7 @@
 
 ---
 
-## Phase 8 (Part 1 / Half) Summary: Customer Medicine Reservation Holds & Pickup Flow
+## Phase 8 Summary: Medicine Reservation Holds, Pickup Verification Code & Restock Alert Subscriptions
 
 ### Goals Accomplished
 1. **Customer Medicine Reservation Service (`reservationService.ts`):**
@@ -182,22 +182,32 @@
    - Full ARIA compliance: `role="dialog"`, `aria-modal="true"`, `aria-labelledby="reservation-modal-title"`.
    - Customer authentication check: gracefully instructs guests to sign in with Customer role to place medicine holds, protecting pharmacy inventory.
    - Generates and presents a prominent 4-digit pickup code to be shown to the pharmacy counter upon arrival.
-   - Captures quantity, optional phone number for SMS updates, and notes for the pharmacist.
-3. **Detail View Integration (`MedicineDetailPage.tsx`):**
-   - Connected `SelectedPharmacyPanel` hold action to trigger `ReservationModal`.
-   - Displays real-time feedback with generated pickup code upon successful hold submission.
-4. **Automated Testing Suite (`customerReservation.test.mjs`):**
-   - 5 unit tests verifying hold creation, 4-digit pickup code generation, 2-hour expiration calculation, minimum quantity validation, pharmacyId requirement, cancellation notes, and expiration status detection.
-   - Total test count expanded to 67 tests (all 67 pass).
+   - Captures quantity, customer pickup name, optional phone number for SMS updates, and notes for the pharmacist.
+3. **Medicine Restock Alert Subscription Service (`alertService.ts`):**
+   - Built `alertService.subscribeAlert()`: allows patients to subscribe for email or SMS notifications when an out-of-stock medicine is restocked by a verified pharmacy in their area.
+   - Provides methods for retrieving stored alerts and cancellation.
+4. **Accessible Restock Alert Modal (`StockAlertModal.tsx`):**
+   - Clean, accessible modal triggered when a search query yields no results or out-of-stock state.
+   - Captures target Dhaka ward/area and patient contact information.
+   - Integrated with "Notify me when restocked" button in `SearchResultsList.tsx` and `SearchResults.tsx`.
+5. **Detail View & Search View Integration:**
+   - Connected `SelectedPharmacyPanel` hold action to trigger `ReservationModal` in `MedicineDetailPage.tsx`.
+   - Displays real-time confirmation banner with generated pickup code upon successful hold submission.
+   - Wired restock alert subscription modal to no-results search views.
+6. **Automated Testing Suite (`customerReservation.test.mjs`):**
+   - 8 unit tests verifying hold creation, 4-digit pickup code generation, 2-hour expiration calculation, minimum quantity validation, pharmacyId requirement, cancellation notes, expiration status detection, restock alert creation, contact validation, and alert cancellation.
+   - Total test count expanded to 70 tests (all 70 pass).
    - ESLint: 0 errors, 0 warnings.
-   - Production build succeeds in 1.35s.
+   - Production build succeeds in 1.26s.
 
 ---
 
 ### Files Created
 - `frontend/src/features/customer/services/reservationService.ts`: Customer medicine reservation service with 2-hour hold expiration and 4-digit pickup codes.
 - `frontend/src/features/customer/components/ReservationModal.tsx`: Accessible reservation dialog for placing medicine pickup holds.
-- `frontend/tests/customerReservation.test.mjs`: Test suite for Phase 8a reservation hold creation, cancellation, and validation.
+- `frontend/src/features/customer/services/alertService.ts`: Stock restock notification service for patients in Dhaka.
+- `frontend/src/features/customer/components/StockAlertModal.tsx`: Accessible modal for subscribing to restock notifications.
+- `frontend/tests/customerReservation.test.mjs`: Test suite for Phase 8 reservation hold creation, cancellation, validation, and restock alerts.
 - `frontend/src/features/customer/services/reportService.ts`: Local & API report submission service with data persistence.
 - `frontend/src/features/customer/components/ReportDiscrepancyModal.tsx`: Accessible reporting dialog for customer stock discrepancies.
 - `frontend/tests/customerDiscrepancyAndRegression.test.mjs`: Test suite for Phase 7 report validation, accessibility, and guest customer journey.

@@ -2,7 +2,7 @@
 import React from 'react';
 import { AvailabilityStatus } from '../../../components/AvailabilityStatus';
 import { FreshnessBadge } from '../../../components/FreshnessBadge';
-import { ChevronRight, Phone, PhoneOff, Navigation, CheckCircle2, AlertTriangle, RefreshCw, SearchX } from 'lucide-react';
+import { ChevronRight, Phone, PhoneOff, Navigation, CheckCircle2, AlertTriangle, RefreshCw, SearchX, Bell } from 'lucide-react';
 import { getDirectionsRoute, sanitizePhoneNumber } from '../utils/routingUtils';
 import type { NearbyPharmacyResult } from '../types';
 
@@ -16,6 +16,7 @@ interface SearchResultsListProps {
   onCallPharmacy?: (phone: string) => void;
   onSelectAlternative?: (altQuery: string) => void;
   onReportDiscrepancy?: (pharmacy: NearbyPharmacyResult) => void;
+  onSubscribeAlert?: (medicineQuery: string) => void;
 }
 
 export const SearchResultsList: React.FC<SearchResultsListProps> = ({
@@ -28,6 +29,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
   onCallPharmacy,
   onSelectAlternative,
   onReportDiscrepancy,
+  onSubscribeAlert,
 }) => {
   // 1. Loading State
   if (isLoading) {
@@ -184,6 +186,31 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
             <li>Expand your search area or check neighboring wards.</li>
           </ul>
         </div>
+
+        {/* Restock alert trigger button */}
+        {onSubscribeAlert && (
+          <div style={{ marginTop: '4px' }}>
+            <button
+              type="button"
+              onClick={() => onSubscribeAlert(searchQuery)}
+              className="btn-primary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 18px',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+              aria-label={`Subscribe to restock notification for ${searchQuery}`}
+            >
+              <Bell size={14} aria-hidden="true" />
+              <span>Notify me when restocked</span>
+            </button>
+          </div>
+        )}
 
         {/* Common Searches */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>

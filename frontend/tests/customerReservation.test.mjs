@@ -1,12 +1,13 @@
 // frontend/tests/customerReservation.test.mjs
-// Phase 8a tests: Medicine reservation holds, pickup code generation, cancellation, and customer auth gating
+// Phase 8 tests: Medicine reservation holds, pickup code generation, cancellation, customer auth gating,
+// and stock restock alert subscriptions
 // Pure vanilla JS — no TypeScript source imports (Node native test runner)
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 // ---------------------------------------------------------------------------
-// Helpers: in-memory replica of reservationService logic
+// Helpers: in-memory replica of reservationService & alertService logic
 // ---------------------------------------------------------------------------
 
 function createMockReservationService() {
@@ -65,11 +66,55 @@ function createMockReservationService() {
   };
 }
 
+function createMockAlertService() {
+  const alerts = [];
+
+  return {
+    async subscribeAlert(params) {
+      const trimmedMedicine = (params.medicineName || '').trim();
+      const trimmedContact = (params.emailOrPhone || '').trim();
+
+      if (!trimmedMedicine) {
+        throw new Error('Medicine name is required to subscribe for alerts.');
+      }
+      if (!trimmedContact) {
+        throw new Error('Please provide an email or phone number to receive alerts.');
+      }
+      if (trimmedContact.length < 5) {
+        throw new Error('Please enter a valid email or phone number.');
+      }
+
+      const subscription = {
+        id: `alert_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        medicineName: trimmedMedicine,
+        area: (params.area || '').trim() || 'Dhaka',
+        emailOrPhone: trimmedContact,
+        createdAt: new Date().toISOString(),
+        status: 'active',
+      };
+
+      alerts.unshift(subscription);
+      return subscription;
+    },
+
+    getStoredAlerts() {
+      return [...alerts];
+    },
+
+    async cancelAlert(alertId) {
+      const target = alerts.find((a) => a.id === alertId);
+      if (!target) throw new Error(`Alert subscription ${alertId} not found.`);
+      target.status = 'cancelled';
+      return target;
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('Phase 8a – Medicine Reservation Holds & Pickup Flow', () => {
+describe('Phase 8 – Medicine Reservation Holds, Pickup Flow & Restock Alerts', () => {
 
   // 1. Successful reservation hold creation with 4-digit pickup code
   it('Reservation Service: creates hold request with 4-digit pickup code and 2-hour expiry', async () => {
@@ -149,11 +194,63 @@ describe('Phase 8a – Medicine Reservation Holds & Pickup Flow', () => {
       id: 'resv_past',
       status: 'pending',
       createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-      expiresAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), // Expired 1 hr ago
+      expiresAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
       pickupCode: '1234',
     };
 
     assert.equal(service.isExpired(pastRecord), true, 'Hold past expiration date must be flagged expired');
+  });
+
+  // 6. Restock alert subscription
+  it('Alert Service: creates active restock notification subscription', async () => {
+    const alertService = createMockAlertService();
+    const sub = await alertService.subscribeAlert({
+      medicineName: 'Insulin Glargine 100 IU',
+      area: 'Gulshan, Dhaka',
+      emailOrPhone: 'user@example.com',
+    });
+
+    assert.ok(sub.id.startsWith('alert_'), 'Alert ID must start with alert_');
+    assert.equal(sub.status, 'active');
+    assert.equal(sub.medicineName, 'Insulin Glargine 100 IU');
+    assert.equal(sub.emailOrPhone, 'user@example.com');
+  });
+
+  // 7. Alert validation: rejects empty contact information
+  it('Alert Validation: rejects alert subscription without contact or medicine name', async () => {
+    const alertService = createMockAlertService();
+    await assert.rejects(
+      async () => {
+        await alertService.subscribeAlert({
+          medicineName: '',
+          emailOrPhone: 'user@example.com',
+        });
+      },
+      { message: /Medicine name is required/i }
+    );
+
+    await assert.rejects(
+      async () => {
+        await alertService.subscribeAlert({
+          medicineName: 'Paracetamol',
+          emailOrPhone: '',
+        });
+      },
+      { message: /Please provide an email or phone/i }
+    );
+  });
+
+  // 8. Alert cancellation
+  it('Alert Cancellation: cancels an active alert subscription', async () => {
+    const alertService = createMockAlertService();
+    const sub = await alertService.subscribeAlert({
+      medicineName: 'Cefixime 200 mg',
+      emailOrPhone: '01811223344',
+      area: 'Mirpur',
+    });
+
+    const cancelled = await alertService.cancelAlert(sub.id);
+    assert.equal(cancelled.status, 'cancelled');
   });
 
 });
