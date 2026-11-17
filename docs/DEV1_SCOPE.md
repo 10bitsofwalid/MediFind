@@ -143,7 +143,39 @@
 
 ---
 
+## Phase 7 Summary: Incorrect-Availability Report Form, Accessibility & Customer Journey Regression
+
+### Goals Accomplished
+1. **Customer Discrepancy Reporting Service (`reportService.ts`):**
+   - Implemented `reportService.submitReport()` accepting structured feedback: pharmacy metadata, medicine details, discrepancy classification (`out_of_stock`, `incorrect_quantity`, `wrong_price`, `closed_unannounced`, `other`), observed stock status, explanatory notes, and optional contact email.
+   - Saves submitted reports into local persistence with unique IDs (`rep_*`) and `pending_review` status.
+2. **Accessible Discrepancy Reporting Modal (`ReportDiscrepancyModal.tsx`):**
+   - Full ARIA compliance: `role="dialog"`, `aria-modal="true"`, and `aria-labelledby="report-modal-title"`.
+   - Keyboard accessible cancel/escape and focusable controls.
+   - Comprehensive error, submitting (`aria-busy`), and success feedback states.
+   - Fully responsive modal with mobile 360px viewport support.
+3. **Integrated Report Triggers in Search & Detail Views:**
+   - Added accessible "Report" trigger to pharmacy search result cards in `SearchResultsList.tsx`.
+   - Added "Report" action button beside pharmacy selection in `MedicineDetailPage.tsx`.
+   - Wired modal to `SearchResults.tsx` and `MedicineDetailPage.tsx`, prefilling active pharmacy & medicine context.
+4. **Automated Testing Suite (`customerDiscrepancyAndRegression.test.mjs`):**
+   - 6 new automated tests verifying:
+     - Successful report generation and unique ID generation
+     - Validation rejection on missing `pharmacyId`
+     - Validation rejection on missing `medicineName`
+     - Validation rejection on invalid `issueType`
+     - ARIA dialog accessibility attributes
+     - Unauthenticated guest customer journey report submission
+   - Total test count expanded to 62 tests (all 62 pass).
+   - ESLint: 0 errors, 0 warnings.
+   - Production build succeeds in 1.29s.
+
+---
+
 ### Files Created
+- `frontend/src/features/customer/services/reportService.ts`: Local & API report submission service with data persistence.
+- `frontend/src/features/customer/components/ReportDiscrepancyModal.tsx`: Accessible reporting dialog for customer stock discrepancies.
+- `frontend/tests/customerDiscrepancyAndRegression.test.mjs`: Test suite for Phase 7 report validation, accessibility, and guest customer journey.
 - `frontend/src/features/customer/utils/routingUtils.ts`: Coordinate validation, Google Maps routing generator, and phone number sanitizer.
 - `frontend/tests/customerRoutingAndActions.test.mjs`: Test suite for Phase 6 routing, phone sanitization, and fallback mechanisms.
 - `frontend/src/features/customer/hooks/useGeolocation.ts`: GPS location hook with fallback error handling.

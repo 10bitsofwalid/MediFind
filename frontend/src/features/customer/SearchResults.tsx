@@ -7,6 +7,7 @@ import { SearchResultsList } from './components/SearchResultsList';
 import { SearchFilterBar, type FilterState } from './components/SearchFilterBar';
 import { LocationRequestBanner } from './components/LocationRequestBanner';
 import { CustomerMapView } from './components/CustomerMapView';
+import { ReportDiscrepancyModal } from './components/ReportDiscrepancyModal';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
 import { medicineService, type MedicineCatalogueDetails } from '../../services/medicineService';
 import { useGeolocation } from './hooks/useGeolocation';
@@ -39,6 +40,7 @@ export const SearchResults: React.FC = () => {
   const [activeCallNumber, setActiveCallNumber] = useState<string | null>(null);
   const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | undefined>(undefined);
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false);
+  const [reportingPharmacy, setReportingPharmacy] = useState<NearbyPharmacyResult | null>(null);
 
   // Synchronize view mode with URL search param
   const viewMode: ViewMode = viewParam === 'map' ? 'map' : 'list';
@@ -383,6 +385,7 @@ export const SearchResults: React.FC = () => {
               onSelectPharmacy={handleSelectPharmacy}
               onCallPharmacy={handleCallPharmacy}
               onSelectAlternative={handleSelectAlternative}
+              onReportDiscrepancy={(pharmacy) => setReportingPharmacy(pharmacy)}
             />
           ) : (
             <CustomerMapView
@@ -396,6 +399,17 @@ export const SearchResults: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Discrepancy Reporting Modal */}
+      {reportingPharmacy && (
+        <ReportDiscrepancyModal
+          pharmacy={reportingPharmacy}
+          medicineName={currentMedicine?.name || queryParam}
+          medicineId={currentMedicine?.id || 'unknown'}
+          isOpen={true}
+          onClose={() => setReportingPharmacy(null)}
+        />
+      )}
 
       {/* Accessibility screen-reader announcement */}
       {activeCallNumber && (

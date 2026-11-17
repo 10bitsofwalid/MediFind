@@ -5,6 +5,7 @@ import { medicineService, type MedicineCatalogueDetails } from '../../services/m
 import { AvailabilityStatus } from '../../components/AvailabilityStatus';
 import { FreshnessBadge } from '../../components/FreshnessBadge';
 import { SelectedPharmacyPanel } from './components/SelectedPharmacyPanel';
+import { ReportDiscrepancyModal } from './components/ReportDiscrepancyModal';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
 import { getDirectionsRoute, sanitizePhoneNumber } from './utils/routingUtils';
 import {
@@ -30,6 +31,7 @@ export const MedicineDetailPage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeCallNumber, setActiveCallNumber] = useState<string | null>(null);
   const [reservationFeedback, setReservationFeedback] = useState<string | null>(null);
+  const [reportingPharmacy, setReportingPharmacy] = useState<NearbyPharmacyResult | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -397,21 +399,40 @@ export const MedicineDetailPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPharmacy(pharmacy)}
-                      className={isSelected ? 'btn-primary' : 'btn-secondary'}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: 'var(--radius-md)',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                      aria-label={`View selected pharmacy details for ${pharmacy.pharmacyName}`}
-                    >
-                      {isSelected ? 'Selected' : 'View details'}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPharmacy(pharmacy)}
+                        className={isSelected ? 'btn-primary' : 'btn-secondary'}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: 'var(--radius-md)',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                        aria-label={`View selected pharmacy details for ${pharmacy.pharmacyName}`}
+                      >
+                        {isSelected ? 'Selected' : 'View details'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setReportingPharmacy(pharmacy)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--color-text-muted)',
+                          fontSize: '11px',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: '4px',
+                        }}
+                        aria-label={`Report incorrect stock for ${pharmacy.pharmacyName}`}
+                      >
+                        Report
+                      </button>
+                    </div>
                   </article>
                 );
               })}
@@ -492,6 +513,17 @@ export const MedicineDetailPage: React.FC = () => {
 
       {/* Stock disclaimer notice */}
       <DisclaimerBanner variant="banner" pharmacyPhone={selectedPharmacy?.phone} />
+
+      {/* Discrepancy Reporting Modal */}
+      {reportingPharmacy && (
+        <ReportDiscrepancyModal
+          pharmacy={reportingPharmacy}
+          medicineName={medicine.name}
+          medicineId={medicine.id}
+          isOpen={true}
+          onClose={() => setReportingPharmacy(null)}
+        />
+      )}
 
       {/* Accessibility announcer */}
       {activeCallNumber && (

@@ -15,6 +15,7 @@ interface SearchResultsListProps {
   onSelectPharmacy?: (pharmacyId: string) => void;
   onCallPharmacy?: (phone: string) => void;
   onSelectAlternative?: (altQuery: string) => void;
+  onReportDiscrepancy?: (pharmacy: NearbyPharmacyResult) => void;
 }
 
 export const SearchResultsList: React.FC<SearchResultsListProps> = ({
@@ -26,6 +27,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
   onSelectPharmacy,
   onCallPharmacy,
   onSelectAlternative,
+  onReportDiscrepancy,
 }) => {
   // 1. Loading State
   if (isLoading) {
@@ -442,25 +444,51 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
               </a>
             </div>
 
-            <button
-              type="button"
-              onClick={() => onSelectPharmacy?.(pharmacy.pharmacyId)}
-              className="btn-secondary"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontSize: '12px',
-                fontWeight: 600,
-                padding: '6px 12px',
-                borderRadius: 'var(--radius-md)',
-                cursor: 'pointer',
-              }}
-              aria-label={`View pharmacy and medicine details for ${pharmacy.pharmacyName}`}
-            >
-              <span>View details</span>
-              <ChevronRight size={14} aria-hidden="true" />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => onSelectPharmacy?.(pharmacy.pharmacyId)}
+                className="btn-secondary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                }}
+                aria-label={`View pharmacy and medicine details for ${pharmacy.pharmacyName}`}
+              >
+                <span>View details</span>
+                <ChevronRight size={14} aria-hidden="true" />
+              </button>
+
+              {onReportDiscrepancy && (
+                <button
+                  type="button"
+                  onClick={() => onReportDiscrepancy(pharmacy)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    color: 'var(--color-text-muted)',
+                    background: 'none',
+                    border: 'none',
+                    padding: '4px 6px',
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                  title="Report incorrect availability or stock info"
+                  aria-label={`Report availability discrepancy for ${pharmacy.pharmacyName}`}
+                >
+                  <AlertTriangle size={12} aria-hidden="true" />
+                  <span>Report</span>
+                </button>
+              )}
+            </div>
           </div>
         </article>
       ))}
