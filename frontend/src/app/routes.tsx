@@ -2,6 +2,7 @@
 import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from '../components/ProtectedRoute';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 // Lazy-loaded routes for code splitting and optimized bundle size (resolves TECH-06)
 const PharmacyRegisterPage = lazy(() =>
@@ -52,10 +53,38 @@ export const AppRoutes: React.FC = () => {
     <Suspense fallback={<RouteLoading />}>
       <Routes>
         {/* Public Customer Discovery Routes (Developer 1) */}
-        <Route path="/" element={<HomePage />} />
-        <Route path="/search" element={<SearchResults />} />
-        <Route path="/medicine" element={<MedicineDetailPage />} />
-        <Route path="/medicine/:id" element={<MedicineDetailPage />} />
+        <Route
+          path="/"
+          element={
+            <ErrorBoundary fallbackTitle="Home Page Error">
+              <HomePage />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/search"
+          element={
+            <ErrorBoundary fallbackTitle="Search Results Error">
+              <SearchResults />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/medicine"
+          element={
+            <ErrorBoundary fallbackTitle="Medicine Details Error">
+              <MedicineDetailPage />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/medicine/:id"
+          element={
+            <ErrorBoundary fallbackTitle="Medicine Details Error">
+              <MedicineDetailPage />
+            </ErrorBoundary>
+          }
+        />
 
         {/* Authentication Routes (resolves TECH-02 & TECH-03) */}
         <Route path="/login" element={<LoginPage />} />
