@@ -202,7 +202,33 @@
 
 ---
 
+## Phase 9 Summary: Blocker Fixes, Edge Case Hardening, Accessibility, Walkthroughs & Production Release Readiness
+
+### Goals Accomplished
+1. **Multi-Word Search Accuracy Improvement (`medicineService.ts`, `medicineCatalogueService.ts`):**
+   - Transformed simple substring inclusion into comprehensive multi-word match tokenization. Every word in multi-term queries (e.g., "Napa Extra 500mg") matches against brand name, generic formulation, and dosage strength simultaneously without false negatives.
+2. **Empty & Whitespace Search Query Sanitization (`HomePage.tsx`, `SearchResults.tsx`):**
+   - Hardened query extraction to trim all string inputs across routes, query params, and autocomplete triggers, preventing whitespace degradation.
+3. **Graceful Fallbacks for Operating Hours (`SearchResultsList.tsx`, `SelectedPharmacyPanel.tsx`, `MobileResultsPreview.tsx`):**
+   - Eliminated empty parentheses `()` when operating hours metadata is omitted or undefined in API records. Added standard fallback schedule displays.
+4. **Mobile Responsive Polish (360px Viewports & Collapsible Filters):**
+   - Enhanced `.mobile-filter-toggle` and responsive media queries in `index.css` ensuring search filters cleanly collapse into a one-tap drawer on mobile devices (<768px).
+5. **Modal Accessibility & Focus Management (`ReportDiscrepancyModal.tsx`, `ReservationModal.tsx`, `StockAlertModal.tsx`):**
+   - Integrated keyboard `Escape` dismissal and outside backdrop click handling across all customer modals while strictly adhering to React hook execution order.
+6. **Dynamic Page Document Titles for SEO & Wayfinding (`HomePage.tsx`, `SearchResults.tsx`, `MedicineDetailPage.tsx`):**
+   - Dynamic document title updates synchronized with current search queries and medicine details across all customer routes.
+7. **Fluid Loading Skeletons with Shimmer Animation (`index.css`, `SearchResultsList.tsx`, `MedicineDetailPage.tsx`):**
+   - Created animated skeleton shimmer placeholder cards during asynchronous data fetching while preserving `role="status"` and `aria-live="polite"` contracts.
+8. **Route-Level Fault Tolerance & Error Boundary Wrappers (`routes.tsx`):**
+   - Wrapped all customer-facing routes (`/`, `/search`, `/medicine`, `/medicine/:id`) in `<ErrorBoundary>` to isolate client-side render exceptions.
+9. **Comprehensive Documentation Suite (`KNOWN_LIMITATIONS.md`, `DEMO_WALKTHROUGH.md`):**
+   - Authored extensive architectural edge case boundaries and step-by-step evaluator demo walkthroughs.
+
+---
+
 ### Files Created
+- `docs/KNOWN_LIMITATIONS.md`: Comprehensive edge cases, GPS limitations, and trust boundaries documentation.
+- `docs/DEMO_WALKTHROUGH.md`: Detailed evaluator and stakeholder walkthrough guide across all customer scenarios.
 - `frontend/src/features/customer/services/reservationService.ts`: Customer medicine reservation service with 2-hour hold expiration and 4-digit pickup codes.
 - `frontend/src/features/customer/components/ReservationModal.tsx`: Accessible reservation dialog for placing medicine pickup holds.
 - `frontend/src/features/customer/services/alertService.ts`: Stock restock notification service for patients in Dhaka.
