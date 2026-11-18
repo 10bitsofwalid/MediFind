@@ -1,5 +1,5 @@
 // src/components/DeleteApplicationModal.tsx
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 interface DeleteApplicationModalProps {
   isOpen: boolean;
@@ -20,6 +20,25 @@ export const DeleteApplicationModal: React.FC<DeleteApplicationModalProps> = ({
   onConfirm,
   titleId = 'delete-application-modal-title',
 }) => {
+  const cancelBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    cancelBtnRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isDeleting) {
+        onCancel();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [isOpen, isDeleting, onCancel]);
+
   if (!isOpen) return null;
 
   return (
@@ -27,6 +46,11 @@ export const DeleteApplicationModal: React.FC<DeleteApplicationModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isDeleting) {
+          onCancel();
+        }
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -82,12 +106,14 @@ export const DeleteApplicationModal: React.FC<DeleteApplicationModalProps> = ({
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
           <button
+            ref={cancelBtnRef}
             type="button"
             disabled={isDeleting}
             onClick={onCancel}
             className="btn-secondary"
             style={{
               padding: '8px 16px',
+              minHeight: '44px',
               borderRadius: 'var(--radius-md)',
               fontSize: '14px',
               fontWeight: 600,
@@ -104,6 +130,7 @@ export const DeleteApplicationModal: React.FC<DeleteApplicationModalProps> = ({
             onClick={onConfirm}
             style={{
               padding: '8px 16px',
+              minHeight: '44px',
               borderRadius: 'var(--radius-md)',
               fontSize: '14px',
               fontWeight: 600,

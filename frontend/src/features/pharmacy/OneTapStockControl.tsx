@@ -1,5 +1,5 @@
 // src/features/pharmacy/OneTapStockControl.tsx
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { StockStatus } from '../../types/pharmacy';
 import type {
   StockInventoryRecord,
@@ -43,11 +43,14 @@ import {
   Clock,
   History,
   HelpCircle,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface OneTapStockControlProps {
   pharmacyId: string;
   pharmacyName?: string;
+  onInventoryChange?: (items: StockInventoryRecord[]) => void;
+  externalRefreshNonce?: number;
 }
 
 const STATUS_CONTROLS: {
@@ -83,6 +86,8 @@ const STATUS_CONTROLS: {
 export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
   pharmacyId,
   pharmacyName,
+  onInventoryChange,
+  externalRefreshNonce = 0,
 }) => {
   const [inventory, setInventory] = useState<StockInventoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -96,7 +101,11 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
   const [updatingStockId, setUpdatingStockId] = useState<string | null>(null);
-  const [updatingAction, setUpdatingAction] = useState<StockStatus | 'quantity' | null>(null);
+  const [updatingAction, setUpdatingAction] = useState<
+    StockStatus | 'quantity' | 'reconfirm' | null
+  >(null);
+  const inFlightStockIdsRef = useRef<Set<string>>(new Set());
+  const isFetchingRef = useRef<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [lastSavedFeedback, setLastSavedFeedback] = useState<{
@@ -123,6 +132,8 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
   const [historyItem, setHistoryItem] = useState<StockInventoryRecord | null>(null);
 
   const fetchInventory = useCallback(async (preserveVisibleList = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     if (preserveVisibleList) {
       setIsRefreshing(true);
     } else {
@@ -144,6 +155,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
         setLoadError(message);
       }
     } finally {
+      isFetchingRef.current = false;
       setIsLoading(false);
       setIsRefreshing(false);
     }
@@ -175,7 +187,13 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [pharmacyId]);
+  }, [pharmacyId, externalRefreshNonce]);
+
+  useEffect(() => {
+    if (!isLoading && !loadError && onInventoryChange) {
+      onInventoryChange(inventory);
+    }
+  }, [inventory, isLoading, loadError, onInventoryChange]);
 
   const summary = useMemo(() => summarizeInventory(inventory), [inventory]);
 
@@ -275,7 +293,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
   };
 
   const handleSaveQuantityOnly = async (item: StockInventoryRecord) => {
-    if (updatingStockId === item.stockId) {
+    if (updatingStockId === item.stockId || inFlightStockIdsRef.current.has(item.stockId)) {
       return;
     }
 
@@ -289,6 +307,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
       return;
     }
 
+    inFlightStockIdsRef.current.add(item.stockId);
     setUpdatingStockId(item.stockId);
     setUpdatingAction('quantity');
     setSuccessMessage(null);
@@ -335,6 +354,67 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
         }
       );
     } finally {
+      inFlightStockIdsRef.current.delete(item.stockId);
+      setUpdatingStockId(null);
+      setUpdatingAction(null);
+    }
+  };
+
+  const handleReconfirmStock = async (
+    item: StockInventoryRecord,
+    confirmedStatus?: 'available' | 'low' | 'out'
+  ) => {
+    if (updatingStockId === item.stockId || inFlightStockIdsRef.current.has(item.stockId)) {
+      return;
+    }
+
+    const targetStatus: 'available' | 'low' | 'out' | undefined =
+      confirmedStatus ??
+      (item.status === 'available' || item.status === 'low' || item.status === 'out'
+        ? item.status
+        : undefined);
+
+    inFlightStockIdsRef.current.add(item.stockId);
+    setUpdatingStockId(item.stockId);
+    setUpdatingAction('reconfirm');
+    setSuccessMessage(null);
+    setActionErrorMessage(null);
+    if (lastSavedFeedback?.stockId === item.stockId) {
+      setLastSavedFeedback(null);
+    }
+    if (rowErrorFeedback?.stockId === item.stockId) {
+      setRowErrorFeedback(null);
+    }
+
+    try {
+      const serverUpdate = await stockService.reconfirmStockItem(pharmacyId, item.stockId, {
+        status: targetStatus,
+        quantity: item.quantity,
+      });
+      const merged = mergeServerStockRecord(item, serverUpdate);
+      setInventory((prev) => prev.map((i) => (i.stockId === merged.stockId ? merged : i)));
+
+      const statusLabel = STOCK_STATUS_LABELS[merged.status] || merged.status;
+      setSuccessMessage(
+        `Reconfirmed ${merged.medicineName} as ${statusLabel} • Updated ${formatExactTimestamp(merged.updatedAt)}`
+      );
+      setLastSavedFeedback({
+        stockId: merged.stockId,
+        status: merged.status,
+        updatedAt: merged.updatedAt,
+        message: `Reconfirmed as ${statusLabel} at ${formatExactTimestamp(merged.updatedAt)}`,
+      });
+    } catch (err: unknown) {
+      applyRowSaveError(
+        item,
+        err,
+        `Could not reconfirm ${item.medicineName}. Please verify status and try again.`,
+        () => {
+          void handleReconfirmStock(item, confirmedStatus);
+        }
+      );
+    } finally {
+      inFlightStockIdsRef.current.delete(item.stockId);
       setUpdatingStockId(null);
       setUpdatingAction(null);
     }
@@ -344,7 +424,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     item: StockInventoryRecord,
     newStatus: 'available' | 'low' | 'out'
   ) => {
-    if (updatingStockId === item.stockId) {
+    if (updatingStockId === item.stockId || inFlightStockIdsRef.current.has(item.stockId)) {
       return;
     }
 
@@ -371,6 +451,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
       quantityToSubmit = validation.value === undefined ? null : validation.value;
     }
 
+    inFlightStockIdsRef.current.add(item.stockId);
     setUpdatingStockId(item.stockId);
     setUpdatingAction(newStatus);
     setSuccessMessage(null);
@@ -383,12 +464,19 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     }
 
     try {
-      const serverUpdate = await stockService.updateStockStatus(
-        pharmacyId,
-        item.stockId,
-        newStatus,
-        quantityToSubmit
-      );
+      const shouldUseReconfirm =
+        item.status === 'unverified' || (stale && item.status === newStatus && !qtyDirty);
+      const serverUpdate = shouldUseReconfirm
+        ? await stockService.reconfirmStockItem(pharmacyId, item.stockId, {
+            status: newStatus,
+            quantity: quantityToSubmit,
+          })
+        : await stockService.updateStockStatus(
+            pharmacyId,
+            item.stockId,
+            newStatus,
+            quantityToSubmit
+          );
       const merged = mergeServerStockRecord(item, serverUpdate);
       setInventory((prev) => prev.map((i) => (i.stockId === merged.stockId ? merged : i)));
       if (qtyDirty) {
@@ -424,6 +512,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
         }
       );
     } finally {
+      inFlightStockIdsRef.current.delete(item.stockId);
       setUpdatingStockId(null);
       setUpdatingAction(null);
     }
@@ -833,6 +922,33 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
             </button>
           );
         })}
+
+        {stale &&
+          (item.status === 'available' || item.status === 'low' || item.status === 'out') && (
+            <button
+              type="button"
+              onClick={() => void handleReconfirmStock(item)}
+              disabled={isUpdating}
+              className="btn-secondary inventory-status-btn"
+              style={{
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-status-caution-border)',
+                backgroundColor: 'var(--color-status-caution-bg)',
+                color: 'var(--color-status-caution)',
+                cursor: isUpdating ? 'not-allowed' : 'pointer',
+              }}
+              aria-label={`Reconfirm current ${STOCK_STATUS_LABELS[item.status]} stock for ${item.medicineName}`}
+            >
+              {isUpdating && updatingAction === 'reconfirm' ? (
+                <span className="spinner-small" aria-hidden="true" />
+              ) : (
+                <ShieldCheck size={13} aria-hidden="true" />
+              )}
+              <span>
+                {isUpdating && updatingAction === 'reconfirm' ? 'Reconfirming...' : 'Reconfirm'}
+              </span>
+            </button>
+          )}
 
         <button
           type="button"

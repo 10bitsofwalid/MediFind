@@ -41,12 +41,17 @@ export const PharmacyInventoryPage: React.FC = () => {
 
       const appRes = appResult.status === 'fulfilled' ? appResult.value : null;
       const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : null;
+      const rejectedReason =
+        profileResult.status === 'rejected'
+          ? profileResult.reason
+          : appResult.status === 'rejected'
+          ? appResult.reason
+          : null;
 
-      if (appResult.status === 'rejected' && profileResult.status === 'rejected') {
-        const reason = profileResult.reason || appResult.reason;
+      if (rejectedReason && !appRes && !profileRes) {
         setError(
-          reason instanceof Error
-            ? reason.message
+          rejectedReason instanceof Error
+            ? rejectedReason.message
             : 'Could not verify your pharmacy workspace status. Please try again.'
         );
       } else {
@@ -71,12 +76,17 @@ export const PharmacyInventoryPage: React.FC = () => {
         if (!mounted) return;
         const appRes = appResult.status === 'fulfilled' ? appResult.value : null;
         const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : null;
+        const rejectedReason =
+          profileResult.status === 'rejected'
+            ? profileResult.reason
+            : appResult.status === 'rejected'
+            ? appResult.reason
+            : null;
 
-        if (appResult.status === 'rejected' && profileResult.status === 'rejected') {
-          const reason = profileResult.reason || appResult.reason;
+        if (rejectedReason && !appRes && !profileRes) {
           setError(
-            reason instanceof Error
-              ? reason.message
+            rejectedReason instanceof Error
+              ? rejectedReason.message
               : 'Could not verify your pharmacy workspace status. Please try again.'
           );
         } else {

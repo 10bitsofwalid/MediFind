@@ -17,41 +17,52 @@ import { BellRing, Clock, X, ArrowRight, Settings2 } from 'lucide-react';
 const ActiveStockReminderManager: React.FC<{ userId: string }> = ({ userId }) => {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<StockReminderNotification[]>([]);
+  const isVerifiedRef = React.useRef<boolean>(false);
 
-  const evaluateReminders = useCallback(async () => {
+  const checkLocalDueReminders = useCallback(() => {
+    if (!isVerifiedRef.current) return;
+    const due = checkAndTriggerDueReminders(userId, true);
+    if (due.length > 0) {
+      setNotifications((prev) => {
+        const existingIds = new Set(prev.map((n) => n.id));
+        const uniqueNew = due.filter((n) => !existingIds.has(n.id));
+        return uniqueNew.length > 0 ? [...prev, ...uniqueNew] : prev;
+      });
+    }
+  }, [userId]);
+
+  const refreshVerificationAndEvaluate = useCallback(async () => {
     try {
       const [app, profile] = await Promise.all([
         getPharmacyApplication().catch(() => null),
         getPharmacyProfile().catch(() => null),
       ]);
       const isVerified = app?.status === 'verified' || profile?.status === 'verified';
+      isVerifiedRef.current = isVerified;
       if (!isVerified) return;
-
-      const due = checkAndTriggerDueReminders(userId, true);
-      if (due.length > 0) {
-        setNotifications((prev) => {
-          const existingIds = new Set(prev.map((n) => n.id));
-          const uniqueNew = due.filter((n) => !existingIds.has(n.id));
-          return uniqueNew.length > 0 ? [...prev, ...uniqueNew] : prev;
-        });
-      }
+      checkLocalDueReminders();
     } catch {
       // ignore background reminder check errors
     }
-  }, [userId]);
+  }, [checkLocalDueReminders]);
 
   useEffect(() => {
-    // Defer initial check asynchronously so setState is never called synchronously in effect body
+    // Check verification status once on mount (and on status-change events), avoiding high-frequency API polling
     const initialTimer = window.setTimeout(() => {
-      void evaluateReminders();
+      void refreshVerificationAndEvaluate();
     }, 150);
 
+    // Check local reminder schedule against clock every 30s without network requests
     const intervalId = window.setInterval(() => {
-      void evaluateReminders();
-    }, 10000);
+      checkLocalDueReminders();
+    }, 30000);
 
-    const handlePrefsOrStatusUpdate = () => {
-      void evaluateReminders();
+    const handlePrefsUpdate = () => {
+      checkLocalDueReminders();
+    };
+
+    const handleStatusUpdate = () => {
+      void refreshVerificationAndEvaluate();
     };
 
     const handleTestReminder = () => {
@@ -70,18 +81,18 @@ const ActiveStockReminderManager: React.FC<{ userId: string }> = ({ userId }) =>
       ]);
     };
 
-    window.addEventListener(REMINDER_PREFS_UPDATED_EVENT, handlePrefsOrStatusUpdate);
-    window.addEventListener(PHARMACY_STATUS_UPDATED_EVENT, handlePrefsOrStatusUpdate);
+    window.addEventListener(REMINDER_PREFS_UPDATED_EVENT, handlePrefsUpdate);
+    window.addEventListener(PHARMACY_STATUS_UPDATED_EVENT, handleStatusUpdate);
     window.addEventListener(TEST_REMINDER_EVENT, handleTestReminder);
 
     return () => {
       window.clearTimeout(initialTimer);
       window.clearInterval(intervalId);
-      window.removeEventListener(REMINDER_PREFS_UPDATED_EVENT, handlePrefsOrStatusUpdate);
-      window.removeEventListener(PHARMACY_STATUS_UPDATED_EVENT, handlePrefsOrStatusUpdate);
+      window.removeEventListener(REMINDER_PREFS_UPDATED_EVENT, handlePrefsUpdate);
+      window.removeEventListener(PHARMACY_STATUS_UPDATED_EVENT, handleStatusUpdate);
       window.removeEventListener(TEST_REMINDER_EVENT, handleTestReminder);
     };
-  }, [evaluateReminders]);
+  }, [checkLocalDueReminders, refreshVerificationAndEvaluate]);
 
   if (notifications.length === 0) {
     return null;

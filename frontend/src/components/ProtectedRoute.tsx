@@ -1,7 +1,8 @@
 // src/components/ProtectedRoute.tsx
 import React, { type ReactNode } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../app/useAuth';
+import { isSafeReturnPath } from '../services/api';
 import type { Role } from '../types/pharmacy';
 import { ShieldAlert, ArrowRight, RefreshCw } from 'lucide-react';
 
@@ -22,6 +23,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   allowedRoles,
   requireAuth = true,
 }) => {
+  const location = useLocation();
   const { user, isAuthenticated, isLoading, selectedUserType, openWelcomeModal } = useAuth();
 
   if (isLoading) {
@@ -157,7 +159,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (requireAuth && (!isAuthenticated || !user)) {
-    return <Navigate to="/login" replace />;
+    const requestedPath = `${location.pathname}${location.search}`;
+    const loginPath = isSafeReturnPath(requestedPath)
+      ? `/login?returnTo=${encodeURIComponent(requestedPath)}`
+      : '/login';
+    return <Navigate to={loginPath} replace />;
   }
 
   return <>{children}</>;

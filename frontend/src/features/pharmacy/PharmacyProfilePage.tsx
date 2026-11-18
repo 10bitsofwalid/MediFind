@@ -89,6 +89,7 @@ export const PharmacyProfilePage: React.FC = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isConflictError, setIsConflictError] = useState<boolean>(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [showDiscardModal, setShowDiscardModal] = useState<boolean>(false);
   const [pendingNavigationTarget, setPendingNavigationTarget] = useState<string | null>(null);
@@ -96,6 +97,7 @@ export const PharmacyProfilePage: React.FC = () => {
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const errorSummaryRef = useRef<HTMLDivElement | null>(null);
   const keepEditingBtnRef = useRef<HTMLButtonElement | null>(null);
+  const isSavingRef = useRef<boolean>(false);
 
   // Populate form fields from server profile
   const populateFields = useCallback((profile: Pharmacy) => {
@@ -351,8 +353,11 @@ export const PharmacyProfilePage: React.FC = () => {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingRef.current) return;
+
     setSaveSuccess(null);
     setSaveError(null);
+    setIsConflictError(false);
 
     const errors = validateForm();
     if (Object.keys(errors).length > 0) {
@@ -364,6 +369,7 @@ export const PharmacyProfilePage: React.FC = () => {
       return;
     }
 
+    isSavingRef.current = true;
     setIsSaving(true);
 
     const formattedAddress = `${streetAddress.trim()}, ${area.trim()}, ${city.trim()}${
@@ -393,7 +399,7 @@ export const PharmacyProfilePage: React.FC = () => {
 
     try {
       // Server authoritative update
-      const updated = await updatePharmacyProfile(updatePayload);
+      const updated = await updatePharmacyProfile(updatePayload, serverProfile);
 
       // Only mark changes saved upon verified server success
       setServerProfile(updated);
@@ -401,6 +407,7 @@ export const PharmacyProfilePage: React.FC = () => {
       setIsEditing(false);
       setSearchParams({});
       setFieldErrors({});
+      setIsConflictError(false);
       setSaveSuccess('Pharmacy profile updated successfully. Saved changes are now confirmed on the server.');
 
       if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
@@ -414,6 +421,9 @@ export const PharmacyProfilePage: React.FC = () => {
 
       if (err instanceof PharmacyServiceError) {
         errorMsg = err.message || errorMsg;
+        if (err.status === 409) {
+          setIsConflictError(true);
+        }
         if (err.fields) {
           setFieldErrors(err.fields);
         }
@@ -427,6 +437,7 @@ export const PharmacyProfilePage: React.FC = () => {
         errorSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
     } finally {
+      isSavingRef.current = false;
       setIsSaving(false);
     }
   };
@@ -947,6 +958,37 @@ export const PharmacyProfilePage: React.FC = () => {
               <X size={16} aria-hidden="true" />
             </button>
           </div>
+
+          {isConflictError && (
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSaveError(null);
+                  setIsConflictError(false);
+                  void loadProfile();
+                }}
+                className="btn-secondary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  minHeight: '40px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-status-problem-border)',
+                  backgroundColor: 'var(--color-surface-panel)',
+                  color: 'var(--color-status-problem)',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <RefreshCw size={14} aria-hidden="true" />
+                <span>Reload Latest Profile</span>
+              </button>
+            </div>
+          )}
 
           {orderedErrors.length > 0 && (
             <ul

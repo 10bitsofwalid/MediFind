@@ -40,9 +40,13 @@ export const StockHistoryModal: React.FC<StockHistoryModalProps> = ({
   const [isNotExposed, setIsNotExposed] = useState<boolean>(false);
 
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const isFetchingRef = useRef<boolean>(false);
 
   const loadHistory = useCallback(
     async (cursor?: string | null) => {
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+
       const appending = Boolean(cursor);
       if (appending) {
         setIsLoadingMore(true);
@@ -71,6 +75,7 @@ export const StockHistoryModal: React.FC<StockHistoryModalProps> = ({
           );
         }
       } finally {
+        isFetchingRef.current = false;
         setIsLoading(false);
         setIsLoadingMore(false);
       }

@@ -1,8 +1,10 @@
 // src/app/AuthProvider.tsx
-import React, { useState, type ReactNode } from 'react';
+import React, { useState, useEffect, type ReactNode } from 'react';
 import type { Role } from '../types/pharmacy';
 import type { User, RegisterPayload } from '../types/auth';
-import { authService } from '../services/authService';
+import { authService, AuthServiceError } from '../services/authService';
+import { SESSION_EXPIRED_EVENT } from '../services/api';
+import { isMockApiEnabled } from '../services/pharmacyService';
 import { AuthContext } from './AuthContext';
 
 const USER_TYPE_STORAGE_KEY = 'medifind_selected_user_type';
@@ -34,6 +36,58 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return !current && !getStoredUserType(current);
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Immediately clear React auth state whenever the API client detects an expired session (401)
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setUser(null);
+      setToken(null);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    };
+  }, []);
+
+  // In live API mode, validate any persisted token via GET /me on initial load
+  useEffect(() => {
+    if (isMockApiEnabled()) return;
+    const existingToken = authService.getToken();
+    if (!existingToken) return;
+
+    let active = true;
+    authService
+      .getMe()
+      .then((serverUser) => {
+        if (!active) return;
+        if (!serverUser || serverUser.status === 'suspended') {
+          authService.logout();
+          setUser(null);
+          setToken(null);
+          return;
+        }
+        setUser(serverUser);
+        setSelectedUserType(serverUser.role);
+        try {
+          sessionStorage.setItem(USER_TYPE_STORAGE_KEY, serverUser.role);
+        } catch {
+          // ignore storage failure
+        }
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        if (err instanceof AuthServiceError && (err.status === 401 || err.status === 403)) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUser(null);
+          setToken(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const selectUserType = (role: Role) => {
     if (user && user.role !== role) {

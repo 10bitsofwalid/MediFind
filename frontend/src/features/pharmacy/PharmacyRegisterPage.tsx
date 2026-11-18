@@ -1,6 +1,7 @@
 // src/features/pharmacy/PharmacyRegisterPage.tsx
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../app/useAuth';
 import type {
   PharmacyApplicationPayload,
   PharmacyApplicationResponse,
@@ -9,6 +10,7 @@ import type {
 } from '../../types/pharmacy';
 import {
   submitPharmacyApplication,
+  updatePharmacyApplication,
   getPharmacyApplication,
   deletePharmacyApplication,
   createDefaultWeeklyHours,
@@ -82,6 +84,7 @@ function getSavedDraft(): FormDraft | null {
 
 export const PharmacyRegisterPage: React.FC = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const initialDraft = useMemo(() => getSavedDraft(), []);
 
   // Active step & highest step reached for flexible navigation
@@ -130,49 +133,96 @@ export const PharmacyRegisterPage: React.FC = () => {
 
   // Successful submission result from server
   const [submittedApplication, setSubmittedApplication] = useState<PharmacyApplicationResponse | null>(null);
+  const [isLoadingExisting, setIsLoadingExisting] = useState<boolean>(
+    () => isMockApiEnabled() || isAuthenticated
+  );
+  const [existingLoadError, setExistingLoadError] = useState<string | null>(null);
+  const [isResubmittingExisting, setIsResubmittingExisting] = useState<boolean>(false);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
 
+  const isSubmittingRef = useRef<boolean>(false);
+  const isDeletingRef = useRef<boolean>(false);
+
+  const hydrateFromExisting = useCallback((existing: PharmacyApplicationResponse) => {
+    setSubmittedApplication(existing);
+    const d = existing.data;
+    setName(d.name || '');
+    setOwnerName(d.ownerName || '');
+    setPhone(d.phone || '');
+    setEmail(d.email || '');
+    setStreetAddress(d.streetAddress || '');
+    setCity(d.city || '');
+    setArea(d.area || '');
+    setPostalCode(d.postalCode || '');
+    if (d.latitude) setLatitude(d.latitude);
+    if (d.longitude) setLongitude(d.longitude);
+    setLicenseNo(d.licenseNo || '');
+    setIssuingAuthority(d.issuingAuthority || '');
+    setLicenseExpiryDate(d.licenseExpiryDate || '');
+    setLicenseType(d.licenseType || 'Retail Pharmacy');
+    if (d.structuredHours) setWeeklyHours(d.structuredHours);
+    if (d.notes) setAdditionalNotes(d.notes);
+    setMaxStepReached(4);
+  }, []);
+
+  const loadExistingApplication = useCallback(async () => {
+    if (!isMockApiEnabled() && !isAuthenticated) {
+      setIsLoadingExisting(false);
+      setExistingLoadError(null);
+      return;
+    }
+    setIsLoadingExisting(true);
+    setExistingLoadError(null);
+    try {
+      const existing = await getPharmacyApplication();
+      if (existing && existing.data) {
+        hydrateFromExisting(existing);
+      }
+    } catch (err: unknown) {
+      setExistingLoadError(
+        err instanceof Error
+          ? err.message
+          : 'Could not check your existing pharmacy application status.'
+      );
+    } finally {
+      setIsLoadingExisting(false);
+    }
+  }, [hydrateFromExisting, isAuthenticated]);
+
   // Check for existing pending application on initial mount
   useEffect(() => {
     let isMounted = true;
 
-    async function checkExisting() {
-      try {
-        const existing = await getPharmacyApplication();
-        if (isMounted && existing && existing.data) {
-          setSubmittedApplication(existing);
-          // Pre-populate form state from existing application
-          const d = existing.data;
-          setName(d.name || '');
-          setOwnerName(d.ownerName || '');
-          setPhone(d.phone || '');
-          setEmail(d.email || '');
-          setStreetAddress(d.streetAddress || '');
-          setCity(d.city || '');
-          setArea(d.area || '');
-          setPostalCode(d.postalCode || '');
-          if (d.latitude) setLatitude(d.latitude);
-          if (d.longitude) setLongitude(d.longitude);
-          setLicenseNo(d.licenseNo || '');
-          setIssuingAuthority(d.issuingAuthority || '');
-          setLicenseExpiryDate(d.licenseExpiryDate || '');
-          setLicenseType(d.licenseType || 'Retail Pharmacy');
-          if (d.structuredHours) setWeeklyHours(d.structuredHours);
-          if (d.notes) setAdditionalNotes(d.notes);
-          setMaxStepReached(4);
-        }
-      } catch {
-        // Backend might be offline or no application yet; safe to ignore
-      }
+    if (!isMockApiEnabled() && !isAuthenticated) {
+      return;
     }
-    checkExisting();
+
+    getPharmacyApplication()
+      .then((existing) => {
+        if (!isMounted) return;
+        if (existing && existing.data) {
+          hydrateFromExisting(existing);
+        }
+        setExistingLoadError(null);
+        setIsLoadingExisting(false);
+      })
+      .catch((err: unknown) => {
+        if (!isMounted) return;
+        setExistingLoadError(
+          err instanceof Error
+            ? err.message
+            : 'Could not check your existing pharmacy application status.'
+        );
+        setIsLoadingExisting(false);
+      });
+
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [hydrateFromExisting, isAuthenticated]);
 
   // Auto-save form draft to sessionStorage on changes
   useEffect(() => {
@@ -327,11 +377,13 @@ export const PharmacyRegisterPage: React.FC = () => {
       const streetErr = validateField('streetAddress', streetAddress);
       const cityErr = validateField('city', city);
       const areaErr = validateField('area', area);
+      const postalErr = validateField('postalCode', postalCode);
       const latErr = validateField('latitude', latitude);
       const lngErr = validateField('longitude', longitude);
       if (streetErr) stepErrors.streetAddress = streetErr;
       if (cityErr) stepErrors.city = cityErr;
       if (areaErr) stepErrors.area = areaErr;
+      if (postalErr) stepErrors.postalCode = postalErr;
       if (latErr) stepErrors.latitude = latErr;
       if (lngErr) stepErrors.longitude = lngErr;
     } else if (step === 'license') {
@@ -379,8 +431,17 @@ export const PharmacyRegisterPage: React.FC = () => {
   // Submit Handler
   const handleSubmitApplication = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
+
     setSubmitError(null);
     setServerErrorDetails(null);
+
+    if (!isMockApiEnabled() && !isAuthenticated) {
+      setSubmitError(
+        'Please sign in to your Pharmacy Owner account before submitting your application. Your draft has been saved in this browser session.'
+      );
+      return;
+    }
 
     // Validate all steps
     const isBusinessValid = validateStep('business');
@@ -410,6 +471,7 @@ export const PharmacyRegisterPage: React.FC = () => {
       return;
     }
 
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
 
     const formattedAddress = `${streetAddress.trim()}, ${area.trim()}, ${city.trim()}${
@@ -444,15 +506,16 @@ export const PharmacyRegisterPage: React.FC = () => {
     };
 
     try {
-      const response = await submitPharmacyApplication(payload);
-      // Server returned confirmation with authoritative 'pending' status
+      const response = isResubmittingExisting
+        ? await updatePharmacyApplication(payload)
+        : await submitPharmacyApplication(payload);
+      // Server returned confirmation with authoritative status
       setDeleteSuccessMessage(null);
+      setIsResubmittingExisting(false);
       setSubmittedApplication(response);
       sessionStorage.removeItem(DRAFT_STORAGE_KEY);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: unknown) {
-      console.error('Pharmacy application submission error:', err);
-
       let msg = 'Failed to submit pharmacy application. ';
       let errCode: string | undefined;
       let errFields: Record<string, string> | undefined;
@@ -461,14 +524,14 @@ export const PharmacyRegisterPage: React.FC = () => {
         errCode = err.code;
         errFields = err.fields;
         if (err.code === 'DUPLICATE_LICENSE' || err.status === 409) {
-          msg = 'This Drug License Number is already registered or currently under review.';
-        } else if (err.code === 'VALIDATION_ERROR' || err.status === 422) {
+          msg = err.message || 'This Drug License Number is already registered or currently under review.';
+        } else if (err.code === 'VALIDATION_ERROR' || err.status === 422 || err.status === 400) {
           msg = err.message || 'Please review highlighted fields according to validation requirements.';
         } else if (err.status === 404) {
           msg =
-            'Backend endpoint POST /owner/pharmacy-applications not found on server (404). Backend contract is in draft.';
+            'Backend endpoint POST /owner/pharmacy-applications not found on server (404). Please confirm endpoint routing with the API owner.';
         } else {
-          msg += err.message;
+          msg = err.message || msg;
         }
       } else if (err instanceof Error) {
         if (err.message.includes('Network Error')) {
@@ -487,6 +550,7 @@ export const PharmacyRegisterPage: React.FC = () => {
         setErrors((prev) => ({ ...prev, ...errFields }));
       }
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -517,12 +581,14 @@ export const PharmacyRegisterPage: React.FC = () => {
   };
 
   const handleDeleteApplication = async () => {
-    if (!submittedApplication) return;
+    if (!submittedApplication || isDeletingRef.current) return;
+    isDeletingRef.current = true;
     setIsDeleting(true);
     setDeleteError(null);
     try {
       await deletePharmacyApplication(submittedApplication.applicationId);
       setSubmittedApplication(null);
+      setIsResubmittingExisting(false);
       setShowDeleteModal(false);
       resetFormToInitial();
       setDeleteSuccessMessage('Your submitted pharmacy application has been deleted.');
@@ -532,9 +598,32 @@ export const PharmacyRegisterPage: React.FC = () => {
         err instanceof Error ? err.message : 'Failed to delete pharmacy application.'
       );
     } finally {
+      isDeletingRef.current = false;
       setIsDeleting(false);
     }
   };
+
+  if (isLoadingExisting) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '50vh',
+          flexDirection: 'column',
+          gap: '12px',
+        }}
+      >
+        <div className="spinner" aria-hidden="true" />
+        <span style={{ color: 'var(--color-text-secondary)', fontSize: '15px' }}>
+          Checking existing pharmacy application status...
+        </span>
+      </div>
+    );
+  }
 
   // -------------------------------------------------------------
   // RENDER: SUBMITTED APPLICATION STATUS & SUMMARY
@@ -1065,6 +1154,7 @@ export const PharmacyRegisterPage: React.FC = () => {
             <button
               type="button"
               onClick={() => {
+                setIsResubmittingExisting(true);
                 setSubmittedApplication(null);
                 setCurrentStep('business');
               }}
@@ -1118,6 +1208,83 @@ export const PharmacyRegisterPage: React.FC = () => {
         padding: '24px 16px 64px',
       }}
     >
+      {/* Sign-In Notice in Live API Mode when Unauthenticated */}
+      {!useDevAdapter && !isAuthenticated && (
+        <div
+          role="note"
+          style={{
+            padding: '12px 16px',
+            borderRadius: 'var(--radius-md)',
+            backgroundColor: 'var(--color-status-caution-bg)',
+            border: '1px solid var(--color-status-caution-border)',
+            color: 'var(--color-status-caution)',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px',
+            marginBottom: '18px',
+          }}
+        >
+          <span>
+            <strong>Sign-in required to submit:</strong> You can draft your pharmacy details here, then sign in as a Pharmacy Owner before final submission.
+          </span>
+          <Link
+            to="/login?returnTo=%2Fpharmacy%2Fregister"
+            className="btn-primary"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '12px',
+              textDecoration: 'none',
+            }}
+          >
+            Sign In to Submit
+          </Link>
+        </div>
+      )}
+
+      {/* Existing Application Load Error Banner */}
+      {existingLoadError && (
+        <div
+          role="alert"
+          style={{
+            padding: '12px 16px',
+            borderRadius: 'var(--radius-md)',
+            backgroundColor: 'var(--color-status-problem-bg)',
+            border: '1px solid var(--color-status-problem-border)',
+            color: 'var(--color-status-problem)',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px',
+            marginBottom: '18px',
+          }}
+        >
+          <span>{existingLoadError}</span>
+          <button
+            type="button"
+            onClick={() => void loadExistingApplication()}
+            className="btn-secondary"
+            style={{
+              padding: '6px 12px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-status-problem-border)',
+              backgroundColor: 'var(--color-surface-panel)',
+              color: 'var(--color-status-problem)',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Retry Status Check
+          </button>
+        </div>
+      )}
+
       {/* Top Banner / Header */}
       <div style={{ marginBottom: '28px', textAlign: 'center' }}>
         <div

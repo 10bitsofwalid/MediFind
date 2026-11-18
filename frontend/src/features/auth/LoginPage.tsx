@@ -1,8 +1,11 @@
 // src/features/auth/LoginPage.tsx
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../app/useAuth';
 import { isMockApiEnabled } from '../../services/pharmacyService';
+import { AuthServiceError } from '../../services/authService';
+import { isSafeReturnPath } from '../../services/api';
+import type { Role } from '../../types/pharmacy';
 import {
   Lock,
   Mail,
@@ -13,17 +16,27 @@ import {
 } from 'lucide-react';
 import { BrandLogo } from '../../components/BrandLogo';
 
+function isReturnPathAllowedForRole(path: string, role: Role): boolean {
+  if (role === 'PHARMACY') return path.startsWith('/pharmacy');
+  if (role === 'ADMIN') return path.startsWith('/admin');
+  return path === '/' || path.startsWith('/search') || path.startsWith('/medicine');
+}
+
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login, selectedUserType, openWelcomeModal } = useAuth();
 
   const isSessionExpired = searchParams.get('reason') === 'session_expired';
+  const rawReturnTo = searchParams.get('returnTo');
+  const safeReturnTo = isSafeReturnPath(rawReturnTo) ? rawReturnTo : null;
 
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const isSubmittingRef = useRef<boolean>(false);
 
   const portalTitle =
     selectedUserType === 'PHARMACY'
@@ -43,29 +56,39 @@ export const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
+
     setErrorMessage(null);
+    const nextFieldErrors: Record<string, string> = {};
 
     const emailTrimmed = email.trim().toLowerCase();
     if (!emailTrimmed) {
-      setErrorMessage('Please enter your account email address.');
-      return;
-    }
-
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!emailRegex.test(emailTrimmed)) {
-      setErrorMessage('Please enter a valid email address (e.g. owner@pharmacy.com).');
-      return;
+      nextFieldErrors.email = 'Please enter your account email address.';
+    } else {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(emailTrimmed)) {
+        nextFieldErrors.email = 'Please enter a valid email address (e.g. owner@pharmacy.com).';
+      }
     }
 
     if (!password) {
-      setErrorMessage('Please enter your password.');
+      nextFieldErrors.password = 'Please enter your password.';
+    }
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors);
+      setErrorMessage(Object.values(nextFieldErrors)[0]);
       return;
     }
 
+    setFieldErrors({});
+    isSubmittingRef.current = true;
     setIsLoading(true);
     try {
       const signedInUser = await login(emailTrimmed, password, selectedUserType || undefined);
-      if (signedInUser.role === 'PHARMACY') {
+      if (safeReturnTo && isReturnPathAllowedForRole(safeReturnTo, signedInUser.role)) {
+        navigate(safeReturnTo, { replace: true });
+      } else if (signedInUser.role === 'PHARMACY') {
         navigate('/pharmacy/dashboard');
       } else if (signedInUser.role === 'ADMIN') {
         navigate('/admin/dashboard');
@@ -73,12 +96,16 @@ export const LoginPage: React.FC = () => {
         navigate('/');
       }
     } catch (err: unknown) {
+      if (err instanceof AuthServiceError && err.fields) {
+        setFieldErrors(err.fields);
+      }
       setErrorMessage(
         err instanceof Error
           ? err.message
           : 'Authentication failed. Please verify your credentials and try again.'
       );
     } finally {
+      isSubmittingRef.current = false;
       setIsLoading(false);
     }
   };
@@ -203,21 +230,27 @@ export const LoginPage: React.FC = () => {
                 <input
                   id="login-email"
                   type="email"
+                  autoComplete="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: '' }));
+                  }}
                   placeholder="name@pharmacy.com"
                   disabled={isLoading}
+                  aria-invalid={Boolean(fieldErrors.email)}
+                  aria-describedby={fieldErrors.email ? 'login-email-error' : undefined}
+                  className={`medifind-input${fieldErrors.email ? ' is-invalid' : ''}`}
                   style={{
-                    width: '100%',
                     padding: '10px 14px 10px 38px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border-default)',
-                    backgroundColor: 'var(--color-surface-panel)',
-                    color: 'var(--color-text-primary)',
-                    fontSize: '14px',
                   }}
                 />
               </div>
+              {fieldErrors.email && (
+                <div id="login-email-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
+                  {fieldErrors.email}
+                </div>
+              )}
             </div>
 
             {/* Password Field */}
@@ -244,21 +277,27 @@ export const LoginPage: React.FC = () => {
                 <input
                   id="login-password"
                   type="password"
+                  autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }));
+                  }}
                   placeholder="Enter your password"
                   disabled={isLoading}
+                  aria-invalid={Boolean(fieldErrors.password)}
+                  aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
+                  className={`medifind-input${fieldErrors.password ? ' is-invalid' : ''}`}
                   style={{
-                    width: '100%',
                     padding: '10px 14px 10px 38px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border-default)',
-                    backgroundColor: 'var(--color-surface-panel)',
-                    color: 'var(--color-text-primary)',
-                    fontSize: '14px',
                   }}
                 />
               </div>
+              {fieldErrors.password && (
+                <div id="login-password-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
+                  {fieldErrors.password}
+                </div>
+              )}
             </div>
 
             {/* Submit Button */}

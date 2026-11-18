@@ -4,6 +4,8 @@ import axios from 'axios';
 import type { PharmacyApplicationResponse, StockStatus } from '../types/pharmacy';
 import type {
   Medicine,
+  OwnerSummary,
+  ReconfirmStockPayload,
   StockHistoryRecord,
   StockHistoryResponse,
   StockInventoryRecord,
@@ -52,16 +54,40 @@ function mapAxiosStockError(err: unknown, fallbackMessage: string): StockService
 
   if (axios.isAxiosError(err)) {
     const httpStatus = err.response?.status;
-    const errorPayload = err.response?.data?.error;
+    const responseData = err.response?.data as Record<string, unknown> | undefined;
+    const errorPayload =
+      responseData?.error && typeof responseData.error === 'object'
+        ? (responseData.error as Record<string, unknown>)
+        : undefined;
     const serverMessage =
       typeof errorPayload?.message === 'string' && errorPayload.message.trim()
         ? errorPayload.message.trim()
+        : typeof responseData?.message === 'string' && responseData.message.trim()
+        ? responseData.message.trim()
         : undefined;
     const code = typeof errorPayload?.code === 'string' ? errorPayload.code : undefined;
     const fields =
       errorPayload?.fields && typeof errorPayload.fields === 'object'
         ? (errorPayload.fields as Record<string, string>)
         : undefined;
+
+    if (!err.response) {
+      if (err.code === 'ERR_CANCELED') {
+        return new StockServiceError('Request was cancelled.', 'CANCELED', 0);
+      }
+      if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') {
+        return new StockServiceError(
+          'The request timed out while waiting for the MediFind server. Your input was preserved — please try again.',
+          'TIMEOUT',
+          0
+        );
+      }
+      return new StockServiceError(
+        'Could not reach the MediFind server. Check your connection and try again.',
+        'NETWORK_ERROR',
+        0
+      );
+    }
 
     if (httpStatus === 401) {
       return new StockServiceError(
@@ -281,6 +307,8 @@ function normalizeServerStockUpdate(raw: unknown): ServerStockUpdate {
       ? obj.stockId.trim()
       : typeof obj.id === 'string' && obj.id.trim()
       ? obj.id.trim()
+      : typeof obj._id === 'string' && obj._id.trim()
+      ? obj._id.trim()
       : '';
 
   const normalizedStatus = normalizeStockStatus(obj.status);
@@ -322,7 +350,8 @@ function normalizeServerStockUpdate(raw: unknown): ServerStockUpdate {
 
 function normalizeServerInventoryRecord(
   raw: unknown,
-  fallbackPharmacyId?: string
+  fallbackPharmacyId?: string,
+  fallbackCatalogue?: Partial<AddInventoryMedicinePayload>
 ): StockInventoryRecord | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
@@ -331,14 +360,70 @@ function normalizeServerInventoryRecord(
       ? obj.stockId.trim()
       : typeof obj.id === 'string' && obj.id.trim()
       ? obj.id.trim()
+      : typeof obj._id === 'string' && obj._id.trim()
+      ? obj._id.trim()
       : '';
   const status = normalizeStockStatus(obj.status);
   if (!stockId || !status) return null;
 
-  const medicineName = typeof obj.medicineName === 'string' ? obj.medicineName : '';
-  const genericName = typeof obj.genericName === 'string' ? obj.genericName : '';
-  const strength = typeof obj.strength === 'string' ? obj.strength : '';
-  const form = typeof obj.form === 'string' ? obj.form : '';
+  const nestedMed =
+    obj.medicine && typeof obj.medicine === 'object'
+      ? (obj.medicine as Record<string, unknown>)
+      : undefined;
+
+  const medicineId =
+    typeof obj.medicineId === 'string' && obj.medicineId.trim()
+      ? obj.medicineId.trim()
+      : typeof nestedMed?.id === 'string' && nestedMed.id.trim()
+      ? nestedMed.id.trim()
+      : typeof nestedMed?._id === 'string' && nestedMed._id.trim()
+      ? nestedMed._id.trim()
+      : fallbackCatalogue?.medicineId || '';
+
+  const medicineName =
+    typeof obj.medicineName === 'string' && obj.medicineName.trim()
+      ? obj.medicineName.trim()
+      : typeof nestedMed?.name === 'string' && nestedMed.name.trim()
+      ? nestedMed.name.trim()
+      : typeof nestedMed?.brandName === 'string' && nestedMed.brandName.trim()
+      ? nestedMed.brandName.trim()
+      : fallbackCatalogue?.medicineName?.trim() || '';
+
+  const genericName =
+    typeof obj.genericName === 'string' && obj.genericName.trim()
+      ? obj.genericName.trim()
+      : typeof nestedMed?.genericName === 'string' && nestedMed.genericName.trim()
+      ? nestedMed.genericName.trim()
+      : fallbackCatalogue?.genericName?.trim() || '';
+
+  const strength =
+    typeof obj.strength === 'string' && obj.strength.trim()
+      ? obj.strength.trim()
+      : typeof nestedMed?.strength === 'string' && nestedMed.strength.trim()
+      ? nestedMed.strength.trim()
+      : fallbackCatalogue?.strength?.trim() || '';
+
+  const form =
+    typeof obj.form === 'string' && obj.form.trim()
+      ? obj.form.trim()
+      : typeof nestedMed?.form === 'string' && nestedMed.form.trim()
+      ? nestedMed.form.trim()
+      : fallbackCatalogue?.form?.trim() || '';
+
+  const manufacturer =
+    typeof obj.manufacturer === 'string' && obj.manufacturer.trim()
+      ? obj.manufacturer.trim()
+      : typeof nestedMed?.manufacturer === 'string' && nestedMed.manufacturer.trim()
+      ? nestedMed.manufacturer.trim()
+      : fallbackCatalogue?.manufacturer?.trim() || undefined;
+
+  const prescriptionRequired =
+    typeof obj.prescriptionRequired === 'boolean'
+      ? obj.prescriptionRequired
+      : typeof nestedMed?.prescriptionRequired === 'boolean'
+      ? nestedMed.prescriptionRequired
+      : fallbackCatalogue?.prescriptionRequired;
+
   const updatedAt = isValidIsoTimestamp(obj.updatedAt) ? obj.updatedAt : '';
 
   const record: StockInventoryRecord = {
@@ -347,14 +432,13 @@ function normalizeServerInventoryRecord(
       typeof obj.pharmacyId === 'string' && obj.pharmacyId.trim()
         ? obj.pharmacyId.trim()
         : fallbackPharmacyId || '',
-    medicineId: typeof obj.medicineId === 'string' ? obj.medicineId : '',
+    medicineId,
     medicineName,
     genericName,
     strength,
     form,
-    manufacturer: typeof obj.manufacturer === 'string' ? obj.manufacturer : undefined,
-    prescriptionRequired:
-      typeof obj.prescriptionRequired === 'boolean' ? obj.prescriptionRequired : undefined,
+    manufacturer,
+    prescriptionRequired,
     status,
     quantity:
       typeof obj.quantity === 'number' && Number.isFinite(obj.quantity) && obj.quantity >= 0
@@ -399,9 +483,11 @@ function normalizeHistoryEntry(
       ? obj._id.trim()
       : '';
 
-  const newStatus = normalizeStockStatus(obj.newStatus);
+  const newStatus = normalizeStockStatus(obj.newStatus ?? obj.toStatus ?? obj.status);
   const changedAt = isValidIsoTimestamp(obj.changedAt)
     ? obj.changedAt
+    : isValidIsoTimestamp(obj.timestamp)
+    ? obj.timestamp
     : isValidIsoTimestamp(obj.updatedAt)
     ? obj.updatedAt
     : isValidIsoTimestamp(obj.createdAt)
@@ -410,10 +496,11 @@ function normalizeHistoryEntry(
 
   if (!historyId || !newStatus || !changedAt) return null;
 
+  const rawOldStatus = obj.oldStatus ?? obj.previousStatus ?? obj.fromStatus;
   const oldStatus =
-    obj.oldStatus === null || obj.oldStatus === undefined || obj.oldStatus === ''
+    rawOldStatus === null || rawOldStatus === undefined || rawOldStatus === ''
       ? null
-      : normalizeStockStatus(obj.oldStatus);
+      : normalizeStockStatus(rawOldStatus);
 
   let changedBy: string | null = null;
   let changedByName: string | null =
@@ -644,7 +731,7 @@ export const stockService = {
 
       const res = await api.post('/owner/inventory', requestBody);
       const rawCreated = res.data?.data ?? res.data;
-      const normalized = normalizeServerInventoryRecord(rawCreated, pharmacyId);
+      const normalized = normalizeServerInventoryRecord(rawCreated, pharmacyId, payload);
       if (!normalized || !normalized.updatedAt) {
         throw new StockServiceError(
           'Server returned an invalid confirmation when adding inventory.',
@@ -789,6 +876,142 @@ export const stockService = {
     return this.updateInventoryItem(pharmacyId, stockId, patch);
   },
 
+  /**
+   * Reconfirms availability after a physical stock check.
+   * Endpoint: POST /owner/inventory/{stockId}/reconfirm
+   * Falls back to PATCH /owner/inventory/{stockId} ONLY when /reconfirm returns 404/405/501
+   * and a valid writable status is supplied.
+   */
+  async reconfirmStockItem(
+    pharmacyId: string,
+    stockId: string,
+    payload?: ReconfirmStockPayload
+  ): Promise<ServerStockUpdate> {
+    if (payload?.status !== undefined) {
+      validateOwnerWritableStatus(payload.status);
+    }
+    if (payload?.quantity !== undefined) {
+      validateNumericBounds(payload.quantity, undefined);
+    }
+
+    if (isMockApiEnabled()) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      assertMockPharmacyAccess(pharmacyId, true);
+      const inventory = await this.getInventory(pharmacyId);
+      const index = inventory.findIndex((item) => item.stockId === stockId);
+      if (index < 0) {
+        throw new StockServiceError('Stock item not found in this pharmacy inventory.', 'NOT_FOUND', 404);
+      }
+      const existing = inventory[index];
+      const nextStatus: StockStatus =
+        payload?.status ??
+        (existing.status === 'available' || existing.status === 'low' || existing.status === 'out'
+          ? existing.status
+          : 'available');
+      const nextQuantity =
+        payload && 'quantity' in payload
+          ? payload.quantity === null
+            ? undefined
+            : payload.quantity
+          : existing.quantity;
+
+      const now = new Date().toISOString();
+      const actor = getMockCurrentActor();
+      const updatedRecord: StockInventoryRecord = {
+        ...existing,
+        status: nextStatus,
+        quantity: nextQuantity,
+        updatedAt: now,
+        updatedBy: actor.id || existing.updatedBy,
+        updatedByName: actor.name || existing.updatedByName,
+      };
+      delete updatedRecord.isStale;
+      delete updatedRecord.freshness;
+
+      inventory[index] = updatedRecord;
+      localStorage.setItem(`${MOCK_STOCK_STORAGE_KEY}_${pharmacyId}`, JSON.stringify(inventory));
+      appendMockStockHistory(pharmacyId, stockId, {
+        stockId,
+        pharmacyId,
+        medicineId: existing.medicineId,
+        oldStatus: existing.status,
+        newStatus: updatedRecord.status,
+        oldQuantity: existing.quantity ?? null,
+        newQuantity: updatedRecord.quantity ?? null,
+        changedBy: actor.id,
+        changedByName: actor.name,
+        changedAt: now,
+      });
+      return { ...updatedRecord, isStale: false, freshness: 'fresh' };
+    }
+
+    try {
+      const body: Record<string, unknown> = {};
+      if (payload?.status !== undefined) body.status = payload.status;
+      if (payload && 'quantity' in payload) body.quantity = payload.quantity;
+
+      const res = await api.post(`/owner/inventory/${stockId}/reconfirm`, body);
+      const updated = res.data?.data ?? res.data;
+      return normalizeServerStockUpdate(updated);
+    } catch (err: unknown) {
+      if (
+        axios.isAxiosError(err) &&
+        (err.response?.status === 404 || err.response?.status === 405 || err.response?.status === 501) &&
+        payload?.status
+      ) {
+        return this.updateStockStatus(pharmacyId, stockId, payload.status, payload.quantity);
+      }
+      throw mapAxiosStockError(err, 'Failed to reconfirm stock availability.');
+    }
+  },
+
+  /**
+   * Reads optional owner operational summary / attention items if exposed by backend.
+   * Endpoint: GET /owner/summary (returns null on 404/501 without fabricating counts)
+   */
+  async getOwnerSummary(pharmacyId: string): Promise<OwnerSummary | null> {
+    if (isMockApiEnabled()) {
+      return null;
+    }
+
+    try {
+      const res = await api.get('/owner/summary');
+      const raw = res.data?.data ?? res.data;
+      if (!raw || typeof raw !== 'object') return null;
+      const obj = raw as Record<string, unknown>;
+
+      const rawAttention = Array.isArray(obj.attentionItems)
+        ? obj.attentionItems
+        : Array.isArray(obj.staleItems)
+        ? obj.staleItems
+        : undefined;
+
+      const attentionItems = rawAttention
+        ? rawAttention
+            .map((entry) => normalizeServerInventoryRecord(entry, pharmacyId))
+            .filter((entry): entry is StockInventoryRecord => Boolean(entry))
+        : undefined;
+
+      return {
+        totalInventory: typeof obj.totalInventory === 'number' ? obj.totalInventory : undefined,
+        availableCount: typeof obj.availableCount === 'number' ? obj.availableCount : undefined,
+        lowCount: typeof obj.lowCount === 'number' ? obj.lowCount : undefined,
+        outCount: typeof obj.outCount === 'number' ? obj.outCount : undefined,
+        staleCount: typeof obj.staleCount === 'number' ? obj.staleCount : undefined,
+        unverifiedCount: typeof obj.unverifiedCount === 'number' ? obj.unverifiedCount : undefined,
+        attentionItems,
+      };
+    } catch (err: unknown) {
+      if (
+        axios.isAxiosError(err) &&
+        (err.response?.status === 404 || err.response?.status === 405 || err.response?.status === 501)
+      ) {
+        return null;
+      }
+      throw mapAxiosStockError(err, 'Failed to load owner workspace summary.');
+    }
+  },
+
   async getStockHistory(
     pharmacyId: string,
     stockId: string,
@@ -865,7 +1088,11 @@ export const stockService = {
     }
   },
 
-  async searchCatalogue(query: string, formFilter?: string): Promise<Medicine[]> {
+  async searchCatalogue(
+    query: string,
+    formFilter?: string,
+    signal?: AbortSignal
+  ): Promise<Medicine[]> {
     const q = query.trim().toLowerCase();
     const formNorm = formFilter?.trim().toLowerCase() || '';
 
@@ -893,6 +1120,7 @@ export const stockService = {
 
       const res = await api.get('/medicines', {
         params: Object.keys(params).length > 0 ? params : undefined,
+        signal,
       });
       const data = res.data?.data ?? res.data;
       if (!Array.isArray(data)) {
@@ -902,7 +1130,62 @@ export const stockService = {
           502
         );
       }
-      return data.filter((med): med is Medicine => Boolean(med) && med.active !== false);
+
+      const normalized: Medicine[] = [];
+      for (const rawMed of data) {
+        if (!rawMed || typeof rawMed !== 'object') continue;
+        const obj = rawMed as Record<string, unknown>;
+        if (obj.active === false || obj.isActive === false) continue;
+
+        const id =
+          typeof obj.id === 'string' && obj.id.trim()
+            ? obj.id.trim()
+            : typeof obj._id === 'string' && obj._id.trim()
+            ? obj._id.trim()
+            : typeof obj.medicineId === 'string' && obj.medicineId.trim()
+            ? obj.medicineId.trim()
+            : '';
+        const name =
+          typeof obj.name === 'string' && obj.name.trim()
+            ? obj.name.trim()
+            : typeof obj.brandName === 'string' && obj.brandName.trim()
+            ? obj.brandName.trim()
+            : '';
+        const genericName =
+          typeof obj.genericName === 'string' && obj.genericName.trim()
+            ? obj.genericName.trim()
+            : '';
+        const strength =
+          typeof obj.strength === 'string' && obj.strength.trim() ? obj.strength.trim() : '';
+        const form =
+          typeof obj.form === 'string' && obj.form.trim()
+            ? obj.form.trim()
+            : typeof obj.dosageForm === 'string' && obj.dosageForm.trim()
+            ? obj.dosageForm.trim()
+            : '';
+
+        if (!id || !name) continue;
+        normalized.push({
+          id,
+          name,
+          genericName,
+          form,
+          strength,
+          manufacturer:
+            typeof obj.manufacturer === 'string' && obj.manufacturer.trim()
+              ? obj.manufacturer.trim()
+              : undefined,
+          description:
+            typeof obj.description === 'string' && obj.description.trim()
+              ? obj.description.trim()
+              : undefined,
+          prescriptionRequired:
+            typeof obj.prescriptionRequired === 'boolean' ? obj.prescriptionRequired : undefined,
+          active: true,
+        });
+      }
+
+      return normalized;
     } catch (err: unknown) {
       throw mapAxiosStockError(err, 'Failed to search medicine catalogue.');
     }

@@ -95,3 +95,18 @@ export interface StockInventoryQuery {
   freshness?: 'fresh' | 'stale';
   sort?: InventorySortOption;
 }
+
+export interface ReconfirmStockPayload {
+  status?: 'available' | 'low' | 'out';
+  quantity?: number | null;
+}
+
+export interface OwnerSummary {
+  totalInventory?: number;
+  availableCount?: number;
+  lowCount?: number;
+  outCount?: number;
+  staleCount?: number;
+  unverifiedCount?: number;
+  attentionItems?: StockInventoryRecord[];
+}

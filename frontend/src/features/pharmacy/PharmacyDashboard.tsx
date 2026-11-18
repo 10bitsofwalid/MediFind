@@ -1,7 +1,8 @@
 // src/features/pharmacy/PharmacyDashboard.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import type { PharmacyApplicationResponse, Pharmacy, VerificationStatus } from '../../types/pharmacy';
+import type { StockInventoryRecord } from '../../types/medicine';
 import {
   getPharmacyApplication,
   getPharmacyProfile,
@@ -9,12 +10,22 @@ import {
   setMockVerificationStatus,
   isMockApiEnabled,
 } from '../../services/pharmacyService';
+import { stockService } from '../../services/stockService';
+import {
+  STOCK_STATUS_LABELS,
+  formatExactTimestamp,
+  isStockRecordStale,
+  mergeServerStockRecord,
+} from './inventoryUtils';
+import { AvailabilityStatus } from '../../components/AvailabilityStatus';
+import { FreshnessBadge } from '../../components/FreshnessBadge';
 import {
   Building2,
   Clock3,
   Lock,
   MapPin,
   ShieldAlert,
+  ShieldCheck,
   FileText,
   Clock,
   ChevronRight,
@@ -36,6 +47,8 @@ import { OneTapStockControl } from './OneTapStockControl';
 import { StockReminderSettings } from './StockReminderSettings';
 import { DeleteApplicationModal } from '../../components/DeleteApplicationModal';
 
+const activeDashboardReconfirmOps = new Set<string>();
+
 export const PharmacyDashboard: React.FC = () => {
   const [application, setApplication] = useState<PharmacyApplicationResponse | null>(null);
   const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
@@ -49,6 +62,16 @@ export const PharmacyDashboard: React.FC = () => {
   const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
   const [showFirstApprovalNotice, setShowFirstApprovalNotice] = useState<boolean>(false);
   const [approvalCountdown, setApprovalCountdown] = useState<number>(10);
+
+  // Attention items & reconfirmation state (synced from loaded inventory + optional /owner/summary)
+  const [trackedInventory, setTrackedInventory] = useState<StockInventoryRecord[] | null>(null);
+  const [inventoryRefreshNonce, setInventoryRefreshNonce] = useState<number>(0);
+  const [reconfirmingStockId, setReconfirmingStockId] = useState<string | null>(null);
+  const [attentionSuccess, setAttentionSuccess] = useState<string | null>(null);
+  const [attentionError, setAttentionError] = useState<string | null>(null);
+
+  const isFetchingStatusRef = useRef<boolean>(false);
+  const isDeletingRef = useRef<boolean>(false);
 
   const syncFirstApprovalNotice = (
     appRes: PharmacyApplicationResponse | null,
@@ -95,6 +118,8 @@ export const PharmacyDashboard: React.FC = () => {
   };
 
   const fetchStatus = async (showRefreshingIndicator = false) => {
+    if (isFetchingStatusRef.current) return;
+    isFetchingStatusRef.current = true;
     if (showRefreshingIndicator) setIsRefreshing(true);
     setError(null);
     try {
@@ -104,12 +129,17 @@ export const PharmacyDashboard: React.FC = () => {
       ]);
       const appRes = appResult.status === 'fulfilled' ? appResult.value : null;
       const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : null;
+      const rejectedReason =
+        profileResult.status === 'rejected'
+          ? profileResult.reason
+          : appResult.status === 'rejected'
+          ? appResult.reason
+          : null;
 
-      if (appResult.status === 'rejected' && profileResult.status === 'rejected') {
-        const reason = profileResult.reason || appResult.reason;
+      if (rejectedReason && !appRes && !profileRes) {
         setError(
-          reason instanceof Error
-            ? reason.message
+          rejectedReason instanceof Error
+            ? rejectedReason.message
             : 'Could not retrieve pharmacy verification status from server.'
         );
       } else {
@@ -124,6 +154,7 @@ export const PharmacyDashboard: React.FC = () => {
           : 'Could not retrieve pharmacy verification status from server.'
       );
     } finally {
+      isFetchingStatusRef.current = false;
       setIsLoading(false);
       setIsRefreshing(false);
     }
@@ -136,12 +167,17 @@ export const PharmacyDashboard: React.FC = () => {
         if (!isMounted) return;
         const appRes = appResult.status === 'fulfilled' ? appResult.value : null;
         const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : null;
+        const rejectedReason =
+          profileResult.status === 'rejected'
+            ? profileResult.reason
+            : appResult.status === 'rejected'
+            ? appResult.reason
+            : null;
 
-        if (appResult.status === 'rejected' && profileResult.status === 'rejected') {
-          const reason = profileResult.reason || appResult.reason;
+        if (rejectedReason && !appRes && !profileRes) {
           setError(
-            reason instanceof Error
-              ? reason.message
+            rejectedReason instanceof Error
+              ? rejectedReason.message
               : 'Could not retrieve pharmacy verification status from server.'
           );
         } else {
@@ -190,6 +226,8 @@ export const PharmacyDashboard: React.FC = () => {
   };
 
   const handleDeleteApplication = async () => {
+    if (isDeletingRef.current) return;
+    isDeletingRef.current = true;
     setIsDeleting(true);
     setDeleteError(null);
     try {
@@ -204,9 +242,75 @@ export const PharmacyDashboard: React.FC = () => {
         err instanceof Error ? err.message : 'Failed to delete pharmacy application.'
       );
     } finally {
+      isDeletingRef.current = false;
       setIsDeleting(false);
     }
   };
+
+  const handleInventorySync = useCallback((items: StockInventoryRecord[]) => {
+    setTrackedInventory(items);
+  }, []);
+
+  const attentionItems = useMemo(() => {
+    if (!trackedInventory) return [];
+    return trackedInventory
+      .filter((item) => item.status === 'unverified' || isStockRecordStale(item))
+      .sort((a, b) => {
+        // Prioritize unverified items first, then oldest stale reports
+        if (a.status === 'unverified' && b.status !== 'unverified') return -1;
+        if (b.status === 'unverified' && a.status !== 'unverified') return 1;
+        const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return (Number.isNaN(timeA) ? 0 : timeA) - (Number.isNaN(timeB) ? 0 : timeB);
+      });
+  }, [trackedInventory]);
+
+  const handleAttentionReconfirm = useCallback(
+    async (
+      pharmacyId: string,
+      item: StockInventoryRecord,
+      confirmedStatus?: 'available' | 'low' | 'out'
+    ) => {
+      const opKey = `${pharmacyId}:${item.stockId}`;
+      if (activeDashboardReconfirmOps.has(opKey)) return;
+
+      const targetStatus: 'available' | 'low' | 'out' | undefined =
+        confirmedStatus ??
+        (item.status === 'available' || item.status === 'low' || item.status === 'out'
+          ? item.status
+          : undefined);
+
+      activeDashboardReconfirmOps.add(opKey);
+      setReconfirmingStockId(item.stockId);
+      setAttentionSuccess(null);
+      setAttentionError(null);
+
+      try {
+        const serverUpdate = await stockService.reconfirmStockItem(pharmacyId, item.stockId, {
+          status: targetStatus,
+          quantity: item.quantity,
+        });
+        const merged = mergeServerStockRecord(item, serverUpdate);
+        setTrackedInventory((prev) =>
+          prev ? prev.map((rec) => (rec.stockId === merged.stockId ? merged : rec)) : prev
+        );
+        setInventoryRefreshNonce((n) => n + 1);
+        setAttentionSuccess(
+          `Reconfirmed ${merged.medicineName} as ${STOCK_STATUS_LABELS[merged.status]} • Updated ${formatExactTimestamp(merged.updatedAt)}`
+        );
+      } catch (err: unknown) {
+        setAttentionError(
+          err instanceof Error
+            ? err.message
+            : `Could not reconfirm ${item.medicineName}. Please verify status and try again.`
+        );
+      } finally {
+        activeDashboardReconfirmOps.delete(opKey);
+        setReconfirmingStockId(null);
+      }
+    },
+    []
+  );
 
   if (isLoading) {
     return (
@@ -1163,9 +1267,290 @@ export const PharmacyDashboard: React.FC = () => {
       )}
 
       {/* ================================================================= */}
-      {/* WORKSPACE SECTIONS: INVENTORY & PROFILE OVERVIEWS                 */}
+      {/* WORKSPACE SECTIONS: ATTENTION ITEMS, INVENTORY & PROFILE          */}
       {/* ================================================================= */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        {/* ATTENTION ITEMS & RECONFIRMATION PANEL (Verified Pharmacies) */}
+        {currentStatus === 'verified' && resolvedPharmacyId && trackedInventory !== null && (
+          <section
+            className="card pharmacy-section-card"
+            aria-labelledby="attention-items-heading"
+            style={{
+              borderColor:
+                attentionItems.length > 0
+                  ? 'var(--color-status-caution-border)'
+                  : 'var(--color-border-default)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '10px',
+                marginBottom: attentionItems.length > 0 || attentionSuccess || attentionError ? '14px' : '0',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <h2
+                  id="attention-items-heading"
+                  style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}
+                >
+                  Attention Items &amp; Reconfirmation
+                </h2>
+                {attentionItems.length > 0 ? (
+                  <span
+                    role="status"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      padding: '3px 10px',
+                      borderRadius: 'var(--radius-full)',
+                      backgroundColor: 'var(--color-status-caution-bg)',
+                      color: 'var(--color-status-caution)',
+                      border: '1px solid var(--color-status-caution-border)',
+                    }}
+                  >
+                    <AlertTriangle size={13} aria-hidden="true" />
+                    <span>
+                      {attentionItems.length} {attentionItems.length === 1 ? 'item needs' : 'items need'} check
+                    </span>
+                  </span>
+                ) : (
+                  <span
+                    role="status"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      padding: '3px 10px',
+                      borderRadius: 'var(--radius-full)',
+                      backgroundColor: 'var(--color-status-available-bg)',
+                      color: 'var(--color-status-available)',
+                      border: '1px solid var(--color-status-available-border)',
+                    }}
+                  >
+                    <CheckCircle2 size={13} aria-hidden="true" />
+                    <span>All stock reports fresh</span>
+                  </span>
+                )}
+              </div>
+
+              <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                Physically check stock before reconfirming stale or unverified entries
+              </span>
+            </div>
+
+            {attentionSuccess && (
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'var(--color-status-available-bg)',
+                  border: '1px solid var(--color-status-available-border)',
+                  color: 'var(--color-status-available)',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  marginBottom: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <CheckCircle2 size={15} aria-hidden="true" style={{ flexShrink: 0 }} />
+                  <span>{attentionSuccess}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAttentionSuccess(null)}
+                  aria-label="Dismiss reconfirmation message"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--color-status-available)',
+                    cursor: 'pointer',
+                    minWidth: '32px',
+                    minHeight: '32px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
+            )}
+
+            {attentionError && (
+              <div
+                role="alert"
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'var(--color-status-problem-bg)',
+                  border: '1px solid var(--color-status-problem-border)',
+                  color: 'var(--color-status-problem)',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  marginBottom: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertTriangle size={15} aria-hidden="true" style={{ flexShrink: 0 }} />
+                  <span>{attentionError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAttentionError(null)}
+                  aria-label="Dismiss reconfirmation error"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--color-status-problem)',
+                    cursor: 'pointer',
+                    minWidth: '32px',
+                    minHeight: '32px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
+            )}
+
+            {attentionItems.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {attentionItems.slice(0, 5).map((item) => {
+                  const isBusy = reconfirmingStockId === item.stockId;
+                  const stale = isStockRecordStale(item);
+                  const isUnverified = item.status === 'unverified';
+                  return (
+                    <div
+                      key={item.stockId}
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--color-border-default)',
+                        backgroundColor: '#f8fafc',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '12px',
+                      }}
+                    >
+                      <div style={{ minWidth: '200px', flex: '1 1 240px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '4px' }}>
+                          {item.medicineName}{' '}
+                          <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)', fontSize: '12px' }}>
+                            ({item.strength} • {item.form})
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <AvailabilityStatus status={item.status} quantity={item.quantity} size="sm" />
+                          <FreshnessBadge updatedAt={item.updatedAt} isStale={stale} />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {isUnverified ? (
+                          (['available', 'low', 'out'] as const).map((statusChoice) => (
+                            <button
+                              key={statusChoice}
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() =>
+                                void handleAttentionReconfirm(resolvedPharmacyId, item, statusChoice)
+                              }
+                              className="btn-secondary inventory-status-btn"
+                              style={{
+                                borderRadius: 'var(--radius-md)',
+                                border: '1px solid var(--color-border-default)',
+                                backgroundColor: 'var(--color-surface-panel)',
+                                color: 'var(--color-text-primary)',
+                                cursor: isBusy ? 'not-allowed' : 'pointer',
+                                opacity: isBusy ? 0.65 : 1,
+                              }}
+                            >
+                              {isBusy ? (
+                                <span className="spinner-small" aria-hidden="true" />
+                              ) : (
+                                <ShieldCheck size={13} aria-hidden="true" />
+                              )}
+                              <span>Confirm {STOCK_STATUS_LABELS[statusChoice]}</span>
+                            </button>
+                          ))
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => void handleAttentionReconfirm(resolvedPharmacyId, item)}
+                            className="btn-primary"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '8px 14px',
+                              minHeight: '42px',
+                              borderRadius: 'var(--radius-md)',
+                              fontSize: '13px',
+                              cursor: isBusy ? 'not-allowed' : 'pointer',
+                              opacity: isBusy ? 0.7 : 1,
+                            }}
+                          >
+                            {isBusy ? (
+                              <span className="spinner-small" aria-hidden="true" />
+                            ) : (
+                              <ShieldCheck size={14} aria-hidden="true" />
+                            )}
+                            <span>
+                              {isBusy
+                                ? 'Reconfirming...'
+                                : `Reconfirm as ${STOCK_STATUS_LABELS[item.status]}`}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {attentionItems.length > 5 && (
+                  <div style={{ textAlign: 'right' }}>
+                    <Link
+                      to="/pharmacy/inventory"
+                      style={{
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        color: 'var(--color-action-primary)',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      View all {attentionItems.length} attention items in Full Workbench →
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
         {/* SECTION 1: MEDICINE INVENTORY WORKBENCH */}
         <section
           className="card pharmacy-section-card"
@@ -1314,7 +1699,12 @@ export const PharmacyDashboard: React.FC = () => {
 
               {/* One-Tap Stock Control Component (resolves TECH-04 & UI-01) */}
               {resolvedPharmacyId ? (
-                <OneTapStockControl pharmacyId={resolvedPharmacyId} pharmacyName={pharmacyName} />
+                <OneTapStockControl
+                  pharmacyId={resolvedPharmacyId}
+                  pharmacyName={pharmacyName}
+                  onInventoryChange={handleInventorySync}
+                  externalRefreshNonce={inventoryRefreshNonce}
+                />
               ) : (
                 <div
                   role="alert"

@@ -66,10 +66,16 @@ function mapAxiosPharmacyError(err: unknown, fallbackMessage: string): PharmacyS
 
   if (axios.isAxiosError(err)) {
     const httpStatus = err.response?.status;
-    const errorPayload = err.response?.data?.error;
+    const responseData = err.response?.data as Record<string, unknown> | undefined;
+    const errorPayload =
+      responseData?.error && typeof responseData.error === 'object'
+        ? (responseData.error as Record<string, unknown>)
+        : undefined;
     const serverMessage =
       typeof errorPayload?.message === 'string' && errorPayload.message.trim()
         ? errorPayload.message.trim()
+        : typeof responseData?.message === 'string' && responseData.message.trim()
+        ? responseData.message.trim()
         : undefined;
     const code = typeof errorPayload?.code === 'string' ? errorPayload.code : undefined;
     const fields =
@@ -78,6 +84,13 @@ function mapAxiosPharmacyError(err: unknown, fallbackMessage: string): PharmacyS
         : undefined;
 
     if (!err.response) {
+      if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') {
+        return new PharmacyServiceError(
+          'The request timed out while waiting for the MediFind server. Your input was preserved — please try again.',
+          'TIMEOUT',
+          0
+        );
+      }
       return new PharmacyServiceError(
         'Could not reach the MediFind server. Check your connection and try again.',
         'NETWORK_ERROR',
@@ -151,16 +164,357 @@ function mapAxiosPharmacyError(err: unknown, fallbackMessage: string): PharmacyS
 }
 
 /**
- * Validates that an object conforms to PharmacyApplicationResponse.
- * Protects against HTML strings returned by SPA fallback when APIs are offline.
+ * Normalizes canonical pharmacy verification status values across casing variants
+ * (e.g. "PENDING", "Pending", "pending"). Returns null for unrecognized values.
  */
-function isValidApplicationResponse(data: unknown): data is PharmacyApplicationResponse {
-  if (typeof data !== 'object' || data === null) return false;
-  const obj = data as Record<string, unknown>;
-  if (!('applicationId' in obj) || !('data' in obj) || !('status' in obj)) return false;
-  const innerData = obj.data;
-  if (typeof innerData !== 'object' || innerData === null) return false;
-  return typeof (innerData as Record<string, unknown>).name === 'string';
+export function normalizeVerificationStatus(raw: unknown): VerificationStatus | null {
+  if (typeof raw !== 'string') return null;
+  const cleaned = raw.trim().toLowerCase();
+  if (
+    cleaned === 'pending' ||
+    cleaned === 'verified' ||
+    cleaned === 'rejected' ||
+    cleaned === 'suspended'
+  ) {
+    return cleaned;
+  }
+  return null;
+}
+
+function extractCoordinates(obj: Record<string, unknown>): {
+  latitude?: number;
+  longitude?: number;
+  location?: { type: 'Point'; coordinates: [number, number] };
+} {
+  let lat = typeof obj.latitude === 'number' && Number.isFinite(obj.latitude) ? obj.latitude : undefined;
+  let lng = typeof obj.longitude === 'number' && Number.isFinite(obj.longitude) ? obj.longitude : undefined;
+
+  const rawLoc = obj.location;
+  if (rawLoc && typeof rawLoc === 'object') {
+    const locObj = rawLoc as Record<string, unknown>;
+    if (
+      Array.isArray(locObj.coordinates) &&
+      locObj.coordinates.length >= 2 &&
+      typeof locObj.coordinates[0] === 'number' &&
+      typeof locObj.coordinates[1] === 'number'
+    ) {
+      if (lng === undefined) lng = locObj.coordinates[0];
+      if (lat === undefined) lat = locObj.coordinates[1];
+    }
+  }
+
+  const location =
+    lat !== undefined && lng !== undefined
+      ? { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }
+      : undefined;
+
+  return { latitude: lat, longitude: lng, location };
+}
+
+function isValidWeeklyHoursObject(raw: unknown): raw is WeeklyHours {
+  if (!raw || typeof raw !== 'object') return false;
+  const obj = raw as Record<string, unknown>;
+  const days: DayOfWeek[] = [
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday',
+  ];
+  return days.some((d) => obj[d] && typeof obj[d] === 'object');
+}
+
+/**
+ * Normalizes a server response for GET /owner/pharmacy-application or
+ * POST /owner/pharmacy-applications, supporting both { data: ... } envelopes
+ * and flat or nested application payloads without fabricating fields.
+ */
+export function normalizeApplicationResponse(
+  raw: unknown,
+  fallbackPayload?: PharmacyApplicationPayload
+): PharmacyApplicationResponse | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const root = raw as Record<string, unknown>;
+
+  // Unwrap API.md §9 envelope { data: { ... } } when outer object does not itself hold applicationId + status
+  const unwrapped =
+    !('applicationId' in root) &&
+    !('status' in root) &&
+    root.data &&
+    typeof root.data === 'object'
+      ? (root.data as Record<string, unknown>)
+      : root;
+
+  const status = normalizeVerificationStatus(unwrapped.status ?? unwrapped.verificationStatus);
+  if (!status) return null;
+
+  const applicationId =
+    typeof unwrapped.applicationId === 'string' && unwrapped.applicationId.trim()
+      ? unwrapped.applicationId.trim()
+      : typeof unwrapped.id === 'string' && unwrapped.id.trim()
+      ? unwrapped.id.trim()
+      : typeof unwrapped._id === 'string' && unwrapped._id.trim()
+      ? unwrapped._id.trim()
+      : '';
+
+  const pharmacyId =
+    typeof unwrapped.pharmacyId === 'string' && unwrapped.pharmacyId.trim()
+      ? unwrapped.pharmacyId.trim()
+      : typeof unwrapped.id === 'string' && unwrapped.id.trim()
+      ? unwrapped.id.trim()
+      : typeof unwrapped._id === 'string' && unwrapped._id.trim()
+      ? unwrapped._id.trim()
+      : undefined;
+
+  const nestedData =
+    unwrapped.data && typeof unwrapped.data === 'object'
+      ? (unwrapped.data as Record<string, unknown>)
+      : unwrapped;
+
+  const name =
+    typeof nestedData.name === 'string' && nestedData.name.trim()
+      ? nestedData.name.trim()
+      : fallbackPayload?.name || '';
+
+  if (!applicationId && !pharmacyId) return null;
+  if (!name) return null;
+
+  const coords = extractCoordinates(nestedData);
+  const latitude = coords.latitude ?? fallbackPayload?.latitude ?? 0;
+  const longitude = coords.longitude ?? fallbackPayload?.longitude ?? 0;
+  const location = coords.location ??
+    fallbackPayload?.location ?? { type: 'Point' as const, coordinates: [longitude, latitude] as [number, number] };
+
+  const structuredHours = isValidWeeklyHoursObject(nestedData.structuredHours)
+    ? nestedData.structuredHours
+    : isValidWeeklyHoursObject(nestedData.weeklyHours)
+    ? nestedData.weeklyHours
+    : fallbackPayload?.structuredHours;
+
+  const openingHours =
+    typeof nestedData.openingHours === 'string' && nestedData.openingHours.trim()
+      ? nestedData.openingHours.trim()
+      : structuredHours
+      ? formatWeeklyHours(structuredHours)
+      : fallbackPayload?.openingHours || '';
+
+  const streetAddress =
+    typeof nestedData.streetAddress === 'string'
+      ? nestedData.streetAddress
+      : fallbackPayload?.streetAddress || '';
+  const area =
+    typeof nestedData.area === 'string' ? nestedData.area : fallbackPayload?.area || '';
+  const city =
+    typeof nestedData.city === 'string' ? nestedData.city : fallbackPayload?.city || '';
+  const postalCode =
+    typeof nestedData.postalCode === 'string'
+      ? nestedData.postalCode
+      : fallbackPayload?.postalCode;
+  const formattedAddress =
+    typeof nestedData.formattedAddress === 'string' && nestedData.formattedAddress.trim()
+      ? nestedData.formattedAddress.trim()
+      : typeof nestedData.address === 'string' && nestedData.address.trim()
+      ? nestedData.address.trim()
+      : fallbackPayload?.formattedAddress ||
+        [streetAddress, area, city].filter(Boolean).join(', ');
+
+  const normalizedData: PharmacyApplicationPayload = {
+    name,
+    ownerName:
+      typeof nestedData.ownerName === 'string'
+        ? nestedData.ownerName
+        : fallbackPayload?.ownerName || '',
+    phone:
+      typeof nestedData.phone === 'string' ? nestedData.phone : fallbackPayload?.phone || '',
+    email:
+      typeof nestedData.email === 'string' ? nestedData.email : fallbackPayload?.email || '',
+    streetAddress,
+    city,
+    area,
+    postalCode,
+    formattedAddress,
+    licenseNo:
+      typeof nestedData.licenseNo === 'string'
+        ? nestedData.licenseNo
+        : fallbackPayload?.licenseNo || '',
+    issuingAuthority:
+      typeof nestedData.issuingAuthority === 'string'
+        ? nestedData.issuingAuthority
+        : fallbackPayload?.issuingAuthority || '',
+    licenseExpiryDate:
+      typeof nestedData.licenseExpiryDate === 'string'
+        ? nestedData.licenseExpiryDate
+        : fallbackPayload?.licenseExpiryDate,
+    licenseType:
+      typeof nestedData.licenseType === 'string'
+        ? nestedData.licenseType
+        : fallbackPayload?.licenseType,
+    latitude,
+    longitude,
+    location,
+    openingHours,
+    structuredHours,
+    notes:
+      typeof nestedData.notes === 'string' ? nestedData.notes : fallbackPayload?.notes,
+  };
+
+  const submittedAt =
+    typeof unwrapped.submittedAt === 'string' && unwrapped.submittedAt.trim()
+      ? unwrapped.submittedAt
+      : typeof unwrapped.createdAt === 'string' && unwrapped.createdAt.trim()
+      ? unwrapped.createdAt
+      : new Date().toISOString();
+
+  const verificationReason =
+    typeof unwrapped.verificationReason === 'string' && unwrapped.verificationReason.trim()
+      ? unwrapped.verificationReason.trim()
+      : typeof unwrapped.rejectionReason === 'string' && unwrapped.rejectionReason.trim()
+      ? unwrapped.rejectionReason.trim()
+      : typeof unwrapped.suspensionReason === 'string' && unwrapped.suspensionReason.trim()
+      ? unwrapped.suspensionReason.trim()
+      : undefined;
+
+  const decisionReason =
+    typeof unwrapped.decisionReason === 'string' && unwrapped.decisionReason.trim()
+      ? unwrapped.decisionReason.trim()
+      : verificationReason;
+
+  const nextStep =
+    typeof unwrapped.nextStep === 'string' && unwrapped.nextStep.trim()
+      ? unwrapped.nextStep.trim()
+      : undefined;
+
+  return {
+    applicationId: applicationId || pharmacyId || '',
+    pharmacyId,
+    status,
+    submittedAt,
+    message:
+      typeof unwrapped.message === 'string' && unwrapped.message.trim()
+        ? unwrapped.message.trim()
+        : 'Pharmacy application received.',
+    data: normalizedData,
+    verificationReason,
+    decisionReason,
+    nextStep,
+  };
+}
+
+/**
+ * Normalizes a server response for GET /owner/pharmacy or PATCH /owner/pharmacy.
+ */
+export function normalizePharmacyRecord(
+  raw: unknown,
+  existing?: Pharmacy | null
+): Pharmacy | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const root = raw as Record<string, unknown>;
+  const obj =
+    root.data && typeof root.data === 'object' ? (root.data as Record<string, unknown>) : root;
+
+  const id =
+    typeof obj._id === 'string' && obj._id.trim()
+      ? obj._id.trim()
+      : typeof obj.id === 'string' && obj.id.trim()
+      ? obj.id.trim()
+      : typeof obj.pharmacyId === 'string' && obj.pharmacyId.trim()
+      ? obj.pharmacyId.trim()
+      : existing?._id || existing?.id || '';
+
+  if (!id) return null;
+
+  const status =
+    normalizeVerificationStatus(obj.status ?? obj.verificationStatus) ||
+    existing?.status ||
+    null;
+
+  if (!status) return null;
+
+  const coords = extractCoordinates(obj);
+  const latitude = coords.latitude ?? existing?.latitude;
+  const longitude = coords.longitude ?? existing?.longitude;
+  const location =
+    coords.location ??
+    existing?.location ??
+    (latitude !== undefined && longitude !== undefined
+      ? { type: 'Point' as const, coordinates: [longitude, latitude] as [number, number] }
+      : { type: 'Point' as const, coordinates: [0, 0] as [number, number] });
+
+  const structuredHours = isValidWeeklyHoursObject(obj.structuredHours)
+    ? obj.structuredHours
+    : isValidWeeklyHoursObject(obj.weeklyHours)
+    ? obj.weeklyHours
+    : existing?.structuredHours;
+
+  const openingHours =
+    typeof obj.openingHours === 'string' && obj.openingHours.trim()
+      ? obj.openingHours.trim()
+      : structuredHours
+      ? formatWeeklyHours(structuredHours)
+      : existing?.openingHours || '';
+
+  const formattedAddress =
+    typeof obj.formattedAddress === 'string' && obj.formattedAddress.trim()
+      ? obj.formattedAddress.trim()
+      : typeof obj.address === 'string' && obj.address.trim()
+      ? obj.address.trim()
+      : existing?.formattedAddress || existing?.address || '';
+
+  const verificationReason =
+    typeof obj.verificationReason === 'string' && obj.verificationReason.trim()
+      ? obj.verificationReason.trim()
+      : typeof obj.decisionReason === 'string' && obj.decisionReason.trim()
+      ? obj.decisionReason.trim()
+      : typeof obj.rejectionReason === 'string' && obj.rejectionReason.trim()
+      ? obj.rejectionReason.trim()
+      : typeof obj.suspensionReason === 'string' && obj.suspensionReason.trim()
+      ? obj.suspensionReason.trim()
+      : existing?.verificationReason;
+
+  return {
+    _id: id,
+    id,
+    ownerId: typeof obj.ownerId === 'string' ? obj.ownerId : existing?.ownerId,
+    name: typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim() : existing?.name || '',
+    ownerName:
+      typeof obj.ownerName === 'string' ? obj.ownerName : existing?.ownerName,
+    phone: typeof obj.phone === 'string' ? obj.phone : existing?.phone || '',
+    email: typeof obj.email === 'string' ? obj.email : existing?.email,
+    address: typeof obj.address === 'string' && obj.address.trim() ? obj.address.trim() : formattedAddress,
+    streetAddress:
+      typeof obj.streetAddress === 'string' ? obj.streetAddress : existing?.streetAddress,
+    city: typeof obj.city === 'string' ? obj.city : existing?.city,
+    area: typeof obj.area === 'string' ? obj.area : existing?.area,
+    postalCode: typeof obj.postalCode === 'string' ? obj.postalCode : existing?.postalCode,
+    formattedAddress,
+    licenseNo: typeof obj.licenseNo === 'string' ? obj.licenseNo : existing?.licenseNo,
+    issuingAuthority:
+      typeof obj.issuingAuthority === 'string' ? obj.issuingAuthority : existing?.issuingAuthority,
+    licenseExpiryDate:
+      typeof obj.licenseExpiryDate === 'string'
+        ? obj.licenseExpiryDate
+        : existing?.licenseExpiryDate,
+    licenseType: typeof obj.licenseType === 'string' ? obj.licenseType : existing?.licenseType,
+    location,
+    latitude,
+    longitude,
+    openingHours,
+    structuredHours,
+    status,
+    verificationReason,
+    decisionReason:
+      typeof obj.decisionReason === 'string' && obj.decisionReason.trim()
+        ? obj.decisionReason.trim()
+        : verificationReason,
+    nextStep:
+      typeof obj.nextStep === 'string' && obj.nextStep.trim()
+        ? obj.nextStep.trim()
+        : existing?.nextStep,
+    createdAt: typeof obj.createdAt === 'string' ? obj.createdAt : existing?.createdAt,
+    updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : existing?.updatedAt,
+  };
 }
 
 /**
@@ -169,10 +523,12 @@ function isValidApplicationResponse(data: unknown): data is PharmacyApplicationR
  * the onboarding flow immediately without a backend server, while supporting live API toggling.
  */
 export function isMockApiEnabled(): boolean {
-  const userPreference = localStorage.getItem('medifind_dev_mock_api');
-  if (userPreference === 'false') return false;
-  if (userPreference === 'true') return true;
-  if (import.meta.env.VITE_USE_MOCK_API === 'false') return false;
+  if (typeof localStorage !== 'undefined') {
+    const userPreference = localStorage.getItem('medifind_dev_mock_api');
+    if (userPreference === 'false') return false;
+    if (userPreference === 'true') return true;
+  }
+  if (import.meta.env?.VITE_USE_MOCK_API === 'false') return false;
   return true;
 }
 
@@ -341,16 +697,50 @@ export async function submitPharmacyApplication(
   // Real backend API invocation
   try {
     const response = await api.post('/owner/pharmacy-applications', payload);
-    if (!isValidApplicationResponse(response.data)) {
+    const normalized = normalizeApplicationResponse(response.data, payload);
+    if (!normalized) {
       throw new PharmacyServiceError(
         'Backend server did not return a valid pharmacy application confirmation object.',
         'INVALID_SERVER_RESPONSE',
         502
       );
     }
-    return response.data;
+    return normalized;
   } catch (err: unknown) {
     throw mapAxiosPharmacyError(err, 'Failed to submit pharmacy application. Please try again.');
+  }
+}
+
+/**
+ * Corrects and resubmits an editable/rejected pharmacy application.
+ * Endpoint: PATCH /owner/pharmacy-application (falls back to POST if PATCH is not implemented)
+ */
+export async function updatePharmacyApplication(
+  payload: PharmacyApplicationPayload
+): Promise<PharmacyApplicationResponse> {
+  if (isMockApiEnabled()) {
+    return submitPharmacyApplication(payload);
+  }
+
+  try {
+    const response = await api.patch('/owner/pharmacy-application', payload);
+    const normalized = normalizeApplicationResponse(response.data, payload);
+    if (!normalized) {
+      throw new PharmacyServiceError(
+        'Backend server did not return a valid pharmacy application update confirmation.',
+        'INVALID_SERVER_RESPONSE',
+        502
+      );
+    }
+    return normalized;
+  } catch (err: unknown) {
+    if (
+      axios.isAxiosError(err) &&
+      (err.response?.status === 404 || err.response?.status === 405 || err.response?.status === 501)
+    ) {
+      return submitPharmacyApplication(payload);
+    }
+    throw mapAxiosPharmacyError(err, 'Failed to resubmit pharmacy application. Please try again.');
   }
 }
 
@@ -364,10 +754,7 @@ export async function getPharmacyApplication(): Promise<PharmacyApplicationRespo
     if (!saved) return null;
     try {
       const parsed = JSON.parse(saved);
-      if (isValidApplicationResponse(parsed)) {
-        return parsed;
-      }
-      return null;
+      return normalizeApplicationResponse(parsed);
     } catch {
       return null;
     }
@@ -375,15 +762,95 @@ export async function getPharmacyApplication(): Promise<PharmacyApplicationRespo
 
   try {
     const response = await api.get('/owner/pharmacy-application');
-    if (isValidApplicationResponse(response.data)) {
-      return response.data;
-    }
-    return null;
+    return normalizeApplicationResponse(response.data);
   } catch (err: unknown) {
     if (axios.isAxiosError(err) && err.response?.status === 404) {
       return null;
     }
     throw mapAxiosPharmacyError(err, 'Could not load pharmacy application status from server.');
+  }
+}
+
+/**
+ * Reads the pharmacy's weekly opening hours schedule when exposed separately.
+ * Endpoint: GET /owner/pharmacy/opening-hours
+ */
+export async function getOpeningHours(): Promise<WeeklyHours | null> {
+  if (isMockApiEnabled()) {
+    const app = await getPharmacyApplication();
+    return app?.data?.structuredHours || null;
+  }
+
+  try {
+    const response = await api.get('/owner/pharmacy/opening-hours');
+    const raw = response.data?.data ?? response.data;
+    if (isValidWeeklyHoursObject(raw)) {
+      return raw;
+    }
+    if (raw && typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>;
+      if (isValidWeeklyHoursObject(obj.structuredHours)) return obj.structuredHours;
+      if (isValidWeeklyHoursObject(obj.weeklyHours)) return obj.weeklyHours;
+      if (isValidWeeklyHoursObject(obj.hours)) return obj.hours;
+    }
+    return null;
+  } catch (err: unknown) {
+    if (
+      axios.isAxiosError(err) &&
+      (err.response?.status === 404 || err.response?.status === 405 || err.response?.status === 501)
+    ) {
+      return null;
+    }
+    throw mapAxiosPharmacyError(err, 'Could not load opening hours schedule from server.');
+  }
+}
+
+/**
+ * Replaces the complete weekly opening hours schedule.
+ * Endpoint: PUT /owner/pharmacy/opening-hours
+ */
+export async function updateOpeningHours(
+  hours: WeeklyHours
+): Promise<{ structuredHours: WeeklyHours; openingHours: string }> {
+  const hoursErr = validateWeeklyHours(hours);
+  if (hoursErr) {
+    throw new PharmacyServiceError(hoursErr, 'VALIDATION_ERROR', 422, {
+      openingHours: hoursErr,
+    });
+  }
+
+  const formatted = formatWeeklyHours(hours);
+
+  if (isMockApiEnabled()) {
+    await updatePharmacyProfile({ structuredHours: hours, openingHours: formatted });
+    return { structuredHours: hours, openingHours: formatted };
+  }
+
+  try {
+    const response = await api.put('/owner/pharmacy/opening-hours', {
+      structuredHours: hours,
+      openingHours: formatted,
+    });
+    const raw = response.data?.data ?? response.data;
+    if (isValidWeeklyHoursObject(raw)) {
+      return { structuredHours: raw, openingHours: formatWeeklyHours(raw) };
+    }
+    if (raw && typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>;
+      const resolvedStructured = isValidWeeklyHoursObject(obj.structuredHours)
+        ? obj.structuredHours
+        : isValidWeeklyHoursObject(obj.weeklyHours)
+        ? obj.weeklyHours
+        : hours;
+      const resolvedOpening =
+        typeof obj.openingHours === 'string' && obj.openingHours.trim()
+          ? obj.openingHours.trim()
+          : formatWeeklyHours(resolvedStructured);
+      return { structuredHours: resolvedStructured, openingHours: resolvedOpening };
+    }
+    return { structuredHours: hours, openingHours: formatted };
+  } catch (err: unknown) {
+    throw mapAxiosPharmacyError(err, 'Failed to update opening hours schedule. Please try again.');
   }
 }
 
@@ -434,11 +901,24 @@ export async function getPharmacyProfile(): Promise<Pharmacy | null> {
 
   try {
     const response = await api.get('/owner/pharmacy');
-    const profile = response.data?.data || response.data;
-    if (profile && typeof profile === 'object' && ('_id' in profile || 'id' in profile)) {
-      return profile;
+    const normalized = normalizePharmacyRecord(response.data);
+    if (!normalized) return null;
+
+    if (!normalized.structuredHours) {
+      try {
+        const separateHours = await getOpeningHours();
+        if (separateHours) {
+          normalized.structuredHours = separateHours;
+          if (!normalized.openingHours) {
+            normalized.openingHours = formatWeeklyHours(separateHours);
+          }
+        }
+      } catch {
+        // Non-blocking: profile still loads even if separate hours endpoint is unavailable
+      }
     }
-    return null;
+
+    return normalized;
   } catch (err: unknown) {
     if (axios.isAxiosError(err) && err.response?.status === 404) {
       return null;
@@ -449,13 +929,14 @@ export async function getPharmacyProfile(): Promise<Pharmacy | null> {
 
 /**
  * Updates the owner's pharmacy profile fields.
- * Endpoint: PATCH /owner/pharmacy
+ * Endpoints: PATCH /owner/pharmacy and (when structuredHours is supplied) PUT /owner/pharmacy/opening-hours
  *
  * Validates updated fields and persists changes to the backend API or mock storage.
  * Does not report success until the server or service adapter confirms the update.
  */
 export async function updatePharmacyProfile(
-  payload: PharmacyProfileUpdatePayload
+  payload: PharmacyProfileUpdatePayload,
+  existingProfile?: Pharmacy | null
 ): Promise<Pharmacy> {
   // Client-side field validation before submission
   const fieldErrors: Record<string, string> = {};
@@ -630,10 +1111,25 @@ export async function updatePharmacyProfile(
   // Real backend API invocation
   try {
     const response = await api.patch('/owner/pharmacy', payload);
-    const updated = response.data?.data || response.data;
-    if (!updated || typeof updated !== 'object') {
+    const updated = normalizePharmacyRecord(response.data, existingProfile);
+    if (!updated) {
       throw new PharmacyServiceError('Server returned invalid profile update response.', 'INVALID_RESPONSE', 502);
     }
+
+    if (payload.structuredHours) {
+      try {
+        const hoursResult = await updateOpeningHours(payload.structuredHours);
+        updated.structuredHours = hoursResult.structuredHours;
+        updated.openingHours = hoursResult.openingHours;
+      } catch (hoursErr: unknown) {
+        const status = hoursErr instanceof PharmacyServiceError ? hoursErr.status : undefined;
+        // Ignore 404/405/501 when backend persists opening hours directly on PATCH /owner/pharmacy
+        if (status !== 404 && status !== 405 && status !== 501) {
+          throw hoursErr;
+        }
+      }
+    }
+
     return updated;
   } catch (err: unknown) {
     throw mapAxiosPharmacyError(err, 'Failed to update pharmacy profile. Please try again.');

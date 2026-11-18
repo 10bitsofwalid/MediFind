@@ -1,7 +1,8 @@
 // src/features/auth/RegisterPage.tsx
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/useAuth';
+import { AuthServiceError } from '../../services/authService';
 import type { Role } from '../../types/pharmacy';
 import {
   Building2,
@@ -30,6 +31,8 @@ export const RegisterPage: React.FC = () => {
   const [roleChoice, setRoleChoice] = useState<'PHARMACY' | 'CUSTOMER'>(fixedRole || 'CUSTOMER');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const isSubmittingRef = useRef<boolean>(false);
 
   const effectiveRole: Role = fixedRole || roleChoice;
 
@@ -119,36 +122,43 @@ export const RegisterPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
+
     setErrorMessage(null);
+    const nextFieldErrors: Record<string, string> = {};
 
     if (!name.trim()) {
-      setErrorMessage('Full name is required.');
-      return;
+      nextFieldErrors.name = 'Full name is required.';
     }
     if (!email.trim()) {
-      setErrorMessage('Email address is required.');
-      return;
-    }
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!emailRegex.test(email.trim())) {
-      setErrorMessage('Please enter a valid email address.');
-      return;
+      nextFieldErrors.email = 'Email address is required.';
+    } else {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(email.trim())) {
+        nextFieldErrors.email = 'Please enter a valid email address.';
+      }
     }
     if (phone.trim()) {
       const digitsOnly = phone.replace(/\D/g, '');
       if (digitsOnly.length < 10 || digitsOnly.length > 15) {
-        setErrorMessage('Phone number should be 10 to 15 digits.');
-        return;
+        nextFieldErrors.phone = 'Phone number should be 10 to 15 digits.';
       }
     }
     if (password.length < 6) {
-      setErrorMessage('Password must be at least 6 characters.');
+      nextFieldErrors.password = 'Password must be at least 6 characters.';
+    }
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors);
+      setErrorMessage(Object.values(nextFieldErrors)[0]);
       return;
     }
 
+    setFieldErrors({});
+    isSubmittingRef.current = true;
     setIsLoading(true);
     try {
-      await register({
+      const createdUser = await register({
         name: name.trim(),
         email: email.trim().toLowerCase(),
         phone: phone.trim() || undefined,
@@ -156,16 +166,20 @@ export const RegisterPage: React.FC = () => {
         role: effectiveRole,
       });
 
-      if (effectiveRole === 'PHARMACY') {
+      if (createdUser.role === 'PHARMACY') {
         navigate('/pharmacy/register');
       } else {
         navigate('/');
       }
     } catch (err: unknown) {
+      if (err instanceof AuthServiceError && err.fields) {
+        setFieldErrors(err.fields);
+      }
       setErrorMessage(
         err instanceof Error ? err.message : 'Failed to create account. Please try again.'
       );
     } finally {
+      isSubmittingRef.current = false;
       setIsLoading(false);
     }
   };
@@ -297,21 +311,27 @@ export const RegisterPage: React.FC = () => {
                 <input
                   id="register-name"
                   type="text"
+                  autoComplete="name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: '' }));
+                  }}
                   placeholder="e.g. Dr. Kazi Nazrul"
                   disabled={isLoading}
+                  aria-invalid={Boolean(fieldErrors.name)}
+                  aria-describedby={fieldErrors.name ? 'register-name-error' : undefined}
+                  className={`medifind-input${fieldErrors.name ? ' is-invalid' : ''}`}
                   style={{
-                    width: '100%',
                     padding: '10px 14px 10px 38px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border-default)',
-                    backgroundColor: 'var(--color-surface-panel)',
-                    color: 'var(--color-text-primary)',
-                    fontSize: '14px',
                   }}
                 />
               </div>
+              {fieldErrors.name && (
+                <div id="register-name-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
+                  {fieldErrors.name}
+                </div>
+              )}
             </div>
 
             {/* Email Field */}
@@ -332,21 +352,27 @@ export const RegisterPage: React.FC = () => {
                 <input
                   id="register-email"
                   type="email"
+                  autoComplete="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: '' }));
+                  }}
                   placeholder="name@domain.com"
                   disabled={isLoading}
+                  aria-invalid={Boolean(fieldErrors.email)}
+                  aria-describedby={fieldErrors.email ? 'register-email-error' : undefined}
+                  className={`medifind-input${fieldErrors.email ? ' is-invalid' : ''}`}
                   style={{
-                    width: '100%',
                     padding: '10px 14px 10px 38px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border-default)',
-                    backgroundColor: 'var(--color-surface-panel)',
-                    color: 'var(--color-text-primary)',
-                    fontSize: '14px',
                   }}
                 />
               </div>
+              {fieldErrors.email && (
+                <div id="register-email-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
+                  {fieldErrors.email}
+                </div>
+              )}
             </div>
 
             {/* Phone Field */}
@@ -367,21 +393,27 @@ export const RegisterPage: React.FC = () => {
                 <input
                   id="register-phone"
                   type="tel"
+                  autoComplete="tel"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: '' }));
+                  }}
                   placeholder="e.g. +8801712345678"
                   disabled={isLoading}
+                  aria-invalid={Boolean(fieldErrors.phone)}
+                  aria-describedby={fieldErrors.phone ? 'register-phone-error' : undefined}
+                  className={`medifind-input${fieldErrors.phone ? ' is-invalid' : ''}`}
                   style={{
-                    width: '100%',
                     padding: '10px 14px 10px 38px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border-default)',
-                    backgroundColor: 'var(--color-surface-panel)',
-                    color: 'var(--color-text-primary)',
-                    fontSize: '14px',
                   }}
                 />
               </div>
+              {fieldErrors.phone && (
+                <div id="register-phone-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
+                  {fieldErrors.phone}
+                </div>
+              )}
             </div>
 
             {/* Password Field */}
@@ -402,21 +434,27 @@ export const RegisterPage: React.FC = () => {
                 <input
                   id="register-password"
                   type="password"
+                  autoComplete="new-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }));
+                  }}
                   placeholder="••••••••"
                   disabled={isLoading}
+                  aria-invalid={Boolean(fieldErrors.password)}
+                  aria-describedby={fieldErrors.password ? 'register-password-error' : undefined}
+                  className={`medifind-input${fieldErrors.password ? ' is-invalid' : ''}`}
                   style={{
-                    width: '100%',
                     padding: '10px 14px 10px 38px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border-default)',
-                    backgroundColor: 'var(--color-surface-panel)',
-                    color: 'var(--color-text-primary)',
-                    fontSize: '14px',
                   }}
                 />
               </div>
+              {fieldErrors.password && (
+                <div id="register-password-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
+                  {fieldErrors.password}
+                </div>
+              )}
             </div>
 
             {/* Submit Button */}

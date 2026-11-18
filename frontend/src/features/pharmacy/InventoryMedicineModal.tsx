@@ -7,7 +7,7 @@ import type {
   AddInventoryMedicinePayload,
   UpdateInventoryMedicinePayload,
 } from '../../types/medicine';
-import { stockService } from '../../services/stockService';
+import { stockService, StockServiceError } from '../../services/stockService';
 import { isMockApiEnabled } from '../../services/pharmacyService';
 import { isDuplicateInventoryMedicine, validateOptionalQuantityInput } from './inventoryUtils';
 import {
@@ -148,6 +148,9 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const firstStatusBtnRef = useRef<HTMLButtonElement | null>(null);
   const errorBannerRef = useRef<HTMLDivElement | null>(null);
+  const isSavingRef = useRef<boolean>(false);
+  const catalogueReqSeqRef = useRef<number>(0);
+  const catalogueAbortRef = useRef<AbortController | null>(null);
 
   const clearModalFieldError = (field: string) => {
     if (!fieldErrors[field]) return;
@@ -183,21 +186,37 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
   }, [isSaving, onClose]);
 
   const loadCatalogue = useCallback(async (query: string, formFilter: string) => {
+    catalogueAbortRef.current?.abort();
+    const controller = new AbortController();
+    catalogueAbortRef.current = controller;
+    const reqSeq = ++catalogueReqSeqRef.current;
+
     setIsSearchingCatalogue(true);
     setCatalogueError(null);
     try {
       const list = await stockService.searchCatalogue(
         query,
-        formFilter === 'all' ? undefined : formFilter
+        formFilter === 'all' ? undefined : formFilter,
+        controller.signal
       );
+      if (reqSeq !== catalogueReqSeqRef.current || controller.signal.aborted) return;
       setCatalogueMatches(list);
     } catch (err: unknown) {
+      if (
+        controller.signal.aborted ||
+        (err instanceof StockServiceError && err.code === 'CANCELED') ||
+        reqSeq !== catalogueReqSeqRef.current
+      ) {
+        return;
+      }
       setCatalogueMatches([]);
       setCatalogueError(
         err instanceof Error ? err.message : 'Unable to search the medicine catalogue.'
       );
     } finally {
-      setIsSearchingCatalogue(false);
+      if (reqSeq === catalogueReqSeqRef.current && !controller.signal.aborted) {
+        setIsSearchingCatalogue(false);
+      }
     }
   }, []);
 
@@ -206,12 +225,13 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
     let cancelled = false;
     const timer = window.setTimeout(() => {
       if (!cancelled) {
-        loadCatalogue(catalogueQuery, catalogueFormFilter);
+        void loadCatalogue(catalogueQuery, catalogueFormFilter);
       }
     }, 120);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      catalogueAbortRef.current?.abort();
     };
   }, [mode, catalogueQuery, catalogueFormFilter, catalogueRefreshNonce, loadCatalogue]);
 
@@ -242,6 +262,8 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingRef.current) return;
+
     setErrorMsg(null);
     const nextFieldErrors: Record<string, string> = {};
 
@@ -280,6 +302,7 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
     }
 
     setFieldErrors({});
+    isSavingRef.current = true;
     setIsSaving(true);
 
     try {
@@ -354,6 +377,7 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
         errorBannerRef.current?.focus();
       });
     } finally {
+      isSavingRef.current = false;
       setIsSaving(false);
     }
   };
