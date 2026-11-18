@@ -68,11 +68,13 @@ export const Navbar: React.FC = () => {
         return [
           { to: '/', label: 'Find Medicine', icon: Search },
           { to: '/search', label: 'Search Stock', icon: Search },
+          { to: '/medicine', label: 'Medicine Details', icon: Pill },
         ];
       }
       return [
         { to: '/', label: 'Find Medicine', icon: Search },
         { to: '/search', label: 'Search Stock', icon: Search },
+        { to: '/medicine', label: 'Medicine Details', icon: Pill },
         { to: '/login', label: 'Sign In', icon: LogIn },
         { to: '/register', label: 'Create Account', icon: UserPlus },
       ];

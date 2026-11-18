@@ -1,5 +1,5 @@
 // frontend/src/features/customer/HomePage.tsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CustomerSearchBar } from './components/CustomerSearchBar';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
@@ -8,10 +8,16 @@ import { MapPin } from 'lucide-react';
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
 
+  useEffect(() => {
+    document.title = 'MediFind - Find Medicine Availability Near You';
+  }, []);
+
   const handleSearch = ({ query, area, useLocation }: { query: string; area: string; useLocation: boolean }) => {
+    const trimmedQ = query.trim();
+    const trimmedArea = area.trim();
     const params = new URLSearchParams();
-    if (query) params.set('q', query);
-    if (area) params.set('area', area);
+    if (trimmedQ) params.set('q', trimmedQ);
+    if (trimmedArea) params.set('area', trimmedArea);
     if (useLocation) params.set('geo', '1');
     navigate(`/search?${params.toString()}`);
   };

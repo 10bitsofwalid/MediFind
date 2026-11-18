@@ -2,6 +2,7 @@
 import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from '../components/ProtectedRoute';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { useAuth } from './useAuth';
 
 // Lazy-loaded routes for code splitting and optimized bundle size (resolves TECH-06)
@@ -71,7 +72,11 @@ const RootEntry: React.FC = () => {
     return <Navigate to={user ? '/admin/dashboard' : '/login'} replace />;
   }
   if (effectiveRole === 'CUSTOMER') {
-    return <HomePage />;
+    return (
+      <ErrorBoundary fallbackTitle="Home Page Error">
+        <HomePage />
+      </ErrorBoundary>
+    );
   }
 
   // Neutral background until user selects a user type in the Welcome modal
@@ -103,7 +108,9 @@ export const AppRoutes: React.FC = () => {
           path="/search"
           element={
             <ProtectedRoute allowedRoles={['CUSTOMER']} requireAuth={false}>
-              <SearchResults />
+              <ErrorBoundary fallbackTitle="Search Results Error">
+                <SearchResults />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -111,7 +118,9 @@ export const AppRoutes: React.FC = () => {
           path="/medicine"
           element={
             <ProtectedRoute allowedRoles={['CUSTOMER']} requireAuth={false}>
-              <MedicineDetailPage />
+              <ErrorBoundary fallbackTitle="Medicine Details Error">
+                <MedicineDetailPage />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -119,7 +128,9 @@ export const AppRoutes: React.FC = () => {
           path="/medicine/:id"
           element={
             <ProtectedRoute allowedRoles={['CUSTOMER']} requireAuth={false}>
-              <MedicineDetailPage />
+              <ErrorBoundary fallbackTitle="Medicine Details Error">
+                <MedicineDetailPage />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />

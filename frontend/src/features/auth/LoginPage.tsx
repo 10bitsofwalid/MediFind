@@ -337,6 +337,14 @@ export const LoginPage: React.FC = () => {
             <span>Switch User Type</span>
           </button>
         </div>
+
+        {(selectedUserType === 'CUSTOMER' || !selectedUserType) && (
+          <div style={{ marginTop: '12px', textAlign: 'center', fontSize: '13px' }}>
+            <Link to="/" style={{ color: 'var(--color-text-secondary)', textDecoration: 'none' }}>
+              Browse medicines without signing in
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   );
