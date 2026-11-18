@@ -111,9 +111,10 @@ export const HomePage: React.FC = () => {
   return (
     <div
       style={{
-        maxWidth: '1100px',
-        margin: '0 auto',
-        padding: '16px',
+        width: '100%',
+        maxWidth: '100%',
+        margin: '0',
+        padding: '24px 32px',
         minHeight: 'calc(100vh - 64px)',
         display: 'flex',
         flexDirection: 'column',
