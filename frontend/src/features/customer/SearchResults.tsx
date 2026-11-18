@@ -45,6 +45,7 @@ export const SearchResults: React.FC = () => {
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false);
   const [reportingPharmacy, setReportingPharmacy] = useState<NearbyPharmacyResult | null>(null);
   const [alertTargetMedicine, setAlertTargetMedicine] = useState<string | null>(null);
+  const [activeRoutingTarget, setActiveRoutingTarget] = useState<NearbyPharmacyResult | null>(null);
 
   // Synchronize view mode with URL search param
   const viewMode: ViewMode = viewParam === 'map' ? 'map' : 'list';
@@ -191,6 +192,7 @@ export const SearchResults: React.FC = () => {
 
   const handleDirections = (pharmacy: NearbyPharmacyResult) => {
     setSelectedPharmacyId(pharmacy.pharmacyId);
+    setActiveRoutingTarget(pharmacy);
     setViewMode('map');
   };
 
@@ -411,6 +413,13 @@ export const SearchResults: React.FC = () => {
               onCallPharmacy={handleCallPharmacy}
               centerLatitude={geo.latitude ?? undefined}
               centerLongitude={geo.longitude ?? undefined}
+              userLocation={
+                geo.latitude && geo.longitude
+                  ? { lat: geo.latitude, lng: geo.longitude }
+                  : undefined
+              }
+              activeRouteDestination={activeRoutingTarget}
+              onClearRoute={() => setActiveRoutingTarget(null)}
             />
           )}
         </div>
