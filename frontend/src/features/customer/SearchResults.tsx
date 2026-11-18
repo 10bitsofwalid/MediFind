@@ -189,6 +189,11 @@ export const SearchResults: React.FC = () => {
     setSelectedPharmacyId(pharmacyId);
   };
 
+  const handleDirections = (pharmacy: NearbyPharmacyResult) => {
+    setSelectedPharmacyId(pharmacy.pharmacyId);
+    setViewMode('map');
+  };
+
   const handleCallPharmacy = (phone: string) => {
     const cleanPhone = sanitizePhoneNumber(phone) || phone;
     setActiveCallNumber(cleanPhone);
@@ -393,6 +398,7 @@ export const SearchResults: React.FC = () => {
               onRetry={() => fetchResults(queryParam, areaParam)}
               onSelectPharmacy={handleSelectPharmacy}
               onCallPharmacy={handleCallPharmacy}
+              onDirections={handleDirections}
               onSelectAlternative={handleSelectAlternative}
               onReportDiscrepancy={(pharmacy) => setReportingPharmacy(pharmacy)}
               onSubscribeAlert={(query) => setAlertTargetMedicine(query)}
