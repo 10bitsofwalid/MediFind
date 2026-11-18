@@ -61,7 +61,12 @@ export const FreshnessBadge: React.FC<FreshnessBadgeProps> = ({
       style={{
         display: 'inline-flex',
         alignItems: 'center',
+<<<<<<< Updated upstream
         gap: '4px',
+=======
+        gap: '5px',
+        whiteSpace: 'nowrap',
+>>>>>>> Stashed changes
         fontSize: '12px',
         fontWeight: 500,
         color: stale ? 'var(--color-status-caution)' : 'var(--color-text-secondary)',
