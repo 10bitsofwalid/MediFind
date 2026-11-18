@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { CustomerSearchBar } from './components/CustomerSearchBar';
 import { MobileResultsPreview } from './components/MobileResultsPreview';
+import { CustomerMapView } from './components/CustomerMapView';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
 import { MapPin, Store } from 'lucide-react';
 import type { NearbyPharmacyResult } from './types';
@@ -232,104 +233,15 @@ export const HomePage: React.FC = () => {
             </span>
           </div>
 
-          {/* Map Wireframe Placeholder Preview with Dhaka grid aesthetic */}
-          <div
-            style={{
-              height: '240px',
-              backgroundColor: '#EDF4F2',
-              borderRadius: 'var(--radius-lg)',
-              border: '1px solid var(--color-border-default)',
-              position: 'relative',
-              overflow: 'hidden',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundImage: 'radial-gradient(#CBD5E1 1px, transparent 1px)',
-              backgroundSize: '24px 24px',
-            }}
-          >
-            {/* Simulated marker pins 1, 2, 3 matching UI Design p.2 */}
-            <div
-              style={{
-                position: 'absolute',
-                top: '40%',
-                left: '25%',
-                width: '28px',
-                height: '28px',
-                borderRadius: '50%',
-                backgroundColor: 'var(--color-action-primary)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: '12px',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-              }}
-              title="1. Green Cross Pharmacy (Available)"
-            >
-              1
-            </div>
-
-            <div
-              style={{
-                position: 'absolute',
-                top: '30%',
-                left: '65%',
-                width: '28px',
-                height: '28px',
-                borderRadius: '50%',
-                backgroundColor: 'var(--color-action-primary)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: '12px',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-              }}
-              title="2. CarePoint Pharmacy (Low stock)"
-            >
-              2
-            </div>
-
-            <div
-              style={{
-                position: 'absolute',
-                top: '70%',
-                left: '75%',
-                width: '28px',
-                height: '28px',
-                borderRadius: '50%',
-                backgroundColor: 'var(--color-action-primary)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: '12px',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-              }}
-              title="3. CityWell Pharmacy (Stale)"
-            >
-              3
-            </div>
-
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '8px',
-                left: '8px',
-                backgroundColor: 'rgba(255,255,255,0.9)',
-                padding: '3px 8px',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '10px',
-                color: 'var(--color-text-secondary)',
-              }}
-            >
-              Dhanmondi, Dhaka area
-            </div>
-          </div>
+          {/* Interactive Live Map Preview */}
+          <CustomerMapView
+            results={DEMO_PREVIEW_RESULTS}
+            onSelectPharmacy={handleSelectPharmacy}
+            onCallPharmacy={handleCallPharmacy}
+            centerLatitude={23.7505}
+            centerLongitude={90.3795}
+            height="260px"
+          />
 
           <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>
             Map and list show the same verified pharmacies and stock states. Real GPS location requested with user consent.
