@@ -1,8 +1,7 @@
 // src/features/pharmacy/PharmacyDashboard.tsx
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import type { PharmacyApplicationResponse, Pharmacy, VerificationStatus } from '../../types/pharmacy';
-import type { StockInventoryRecord } from '../../types/medicine';
 import {
   getPharmacyApplication,
   getPharmacyProfile,
@@ -10,10 +9,6 @@ import {
   seedSamplePharmacy,
   isMockApiEnabled,
 } from '../../services/pharmacyService';
-import { stockService } from '../../services/stockService';
-import { summarizeInventory } from './inventoryUtils';
-import { OwnerDashboardSummaryCards } from './OwnerDashboardSummaryCards';
-import { StockQualityAttentionView } from './StockQualityAttentionView';
 import {
   Building2,
   Clock3,
@@ -44,76 +39,6 @@ export const PharmacyDashboard: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedEmail, setCopiedEmail] = useState<boolean>(false);
-<<<<<<< Updated upstream
-=======
-  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
-  const [isDeleting, setIsDeleting] = useState<boolean>(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
-  const [showFirstApprovalNotice, setShowFirstApprovalNotice] = useState<boolean>(false);
-  const [approvalCountdown, setApprovalCountdown] = useState<number>(10);
-
-  // Stock inventory & quality attention state
-  const [inventory, setInventory] = useState<StockInventoryRecord[]>([]);
-  const [isInventoryLoading, setIsInventoryLoading] = useState<boolean>(true);
-  const [inventoryError, setInventoryError] = useState<string | null>(null);
-  const [isSeedingDemo, setIsSeedingDemo] = useState<boolean>(false);
-  const [demoSeedNotice, setDemoSeedNotice] = useState<string | null>(null);
-
-  const loadInventory = useCallback(async (pharmId: string) => {
-    if (!pharmId) {
-      setInventory([]);
-      setIsInventoryLoading(false);
-      return;
-    }
-    setIsInventoryLoading(true);
-    setInventoryError(null);
-    try {
-      const items = await stockService.getInventory(pharmId);
-      setInventory(items);
-    } catch (err: unknown) {
-      setInventoryError(
-        err instanceof Error ? err.message : 'Failed to load inventory records.'
-      );
-    } finally {
-      setIsInventoryLoading(false);
-    }
-  }, []);
-
-  const syncFirstApprovalNotice = (
-    appRes: PharmacyApplicationResponse | null,
-    profileRes: Pharmacy | null
-  ) => {
-    const resolvedStatus = appRes?.status || profileRes?.status;
-    const entityId = appRes?.applicationId || profileRes?._id;
-    if (!entityId) {
-      setShowFirstApprovalNotice(false);
-      return;
-    }
-
-    const seenKey = `medifind_approval_notice_seen_${entityId}`;
-    if (resolvedStatus === 'verified') {
-      const alreadySeen = localStorage.getItem(seenKey) === 'true';
-      if (!alreadySeen) {
-        setApprovalCountdown(10);
-        setShowFirstApprovalNotice(true);
-      } else {
-        setShowFirstApprovalNotice(false);
-      }
-    } else {
-      localStorage.removeItem(seenKey);
-      setShowFirstApprovalNotice(false);
-    }
-  };
-
-  const dismissFirstApprovalNotice = () => {
-    const entityId = application?.applicationId || pharmacy?._id;
-    if (entityId) {
-      localStorage.setItem(`medifind_approval_notice_seen_${entityId}`, 'true');
-    }
-    setShowFirstApprovalNotice(false);
-  };
->>>>>>> Stashed changes
 
   const handleCopyEmail = () => {
     navigator.clipboard.writeText('compliance@medifind.dev').then(() => {
@@ -132,17 +57,6 @@ export const PharmacyDashboard: React.FC = () => {
       ]);
       setApplication(appRes);
       setPharmacy(profileRes);
-<<<<<<< Updated upstream
-=======
-      syncFirstApprovalNotice(appRes, profileRes);
-
-      const pharmId = profileRes?._id || profileRes?.id || appRes?.pharmacyId || '';
-      if (pharmId) {
-        await loadInventory(pharmId);
-      } else {
-        setIsInventoryLoading(false);
-      }
->>>>>>> Stashed changes
     } catch {
       setError('Could not retrieve pharmacy verification status from server.');
     } finally {
@@ -162,39 +76,19 @@ export const PharmacyDashboard: React.FC = () => {
           setApplication(appRes);
           setPharmacy(profileRes);
           setIsLoading(false);
-
-          const pharmId = profileRes?._id || profileRes?.id || appRes?.pharmacyId || '';
-          if (pharmId) {
-            loadInventory(pharmId);
-          } else {
-            setIsInventoryLoading(false);
-          }
         }
       })
       .catch(() => {
         if (isMounted) {
           setError('Could not retrieve pharmacy verification status from server.');
           setIsLoading(false);
-          setIsInventoryLoading(false);
         }
       });
 
-    const handleStockUpdatedEvent = () => {
-      const currentPharmId = pharmacy?._id || pharmacy?.id || application?.pharmacyId;
-      if (currentPharmId) {
-        stockService.getInventory(currentPharmId).then((items) => {
-          if (isMounted) setInventory(items);
-        }).catch(() => {});
-      }
-    };
-
-    window.addEventListener('medifind:stock-updated', handleStockUpdatedEvent);
-
     return () => {
       isMounted = false;
-      window.removeEventListener('medifind:stock-updated', handleStockUpdatedEvent);
     };
-  }, [loadInventory, pharmacy?._id, pharmacy?.id, application?.pharmacyId]);
+  }, []);
 
   const handleSimulateStatus = (status: VerificationStatus) => {
     let reason: string | undefined;
@@ -335,43 +229,6 @@ export const PharmacyDashboard: React.FC = () => {
   const phoneString = pharmacy?.phone || application?.data?.phone || '';
   const emailString = pharmacy?.email || application?.data?.email || '';
 
-<<<<<<< Updated upstream
-=======
-  const resolvedPharmacyId = pharmacy?._id || pharmacy?.id || application?.pharmacyId || '';
-
-  // Authoritative inventory summary derived strictly from returned records
-  const summary = useMemo(() => summarizeInventory(inventory), [inventory]);
-
-  const handleScrollToAttention = () => {
-    const el = document.getElementById('stock-quality-attention-section');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  const handleItemReconfirmed = (updated: StockInventoryRecord) => {
-    setInventory((prev) =>
-      prev.map((item) => (item.stockId === updated.stockId ? updated : item))
-    );
-    window.dispatchEvent(new CustomEvent('medifind:stock-updated'));
-  };
-
-  const handleSeedDemoStock = async () => {
-    if (!resolvedPharmacyId) return;
-    setIsSeedingDemo(true);
-    try {
-      const seeded = await stockService.seedDemoInventory(resolvedPharmacyId);
-      setInventory(seeded);
-      setDemoSeedNotice('Loaded 5 realistic demo medicines including 2 quality attention items (1 stale >= 24h, 1 unverified).');
-      window.dispatchEvent(new CustomEvent('medifind:stock-updated'));
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to seed demo inventory.');
-    } finally {
-      setIsSeedingDemo(false);
-    }
-  };
-
->>>>>>> Stashed changes
   // Extract decision reason and next step when provided by the API
   const decisionReason =
     application?.decisionReason ||
@@ -411,99 +268,35 @@ export const PharmacyDashboard: React.FC = () => {
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-              {(['pending', 'verified', 'rejected', 'suspended'] as VerificationStatus[]).map((st) => {
-                const isActive = currentStatus === st;
-                return (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => handleSimulateStatus(st)}
-                    style={{
-                      padding: '4px 10px',
-                      fontSize: '12px',
-                      fontWeight: isActive ? 700 : 500,
-                      borderRadius: 'var(--radius-full)',
-                      border: isActive
-                        ? '1px solid var(--color-action-primary)'
-                        : '1px solid var(--color-border-default)',
-                      backgroundColor: isActive ? 'var(--color-action-primary)' : 'var(--color-surface-canvas)',
-                      color: isActive ? '#ffffff' : 'var(--color-text-primary)',
-                      cursor: 'pointer',
-                      textTransform: 'capitalize',
-                    }}
-                    aria-pressed={isActive}
-                  >
-                    {st}
-                  </button>
-                );
-              })}
-            </div>
-
-            {resolvedPharmacyId && (
-              <button
-                type="button"
-                onClick={handleSeedDemoStock}
-                disabled={isSeedingDemo}
-                style={{
-                  padding: '4px 12px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  borderRadius: 'var(--radius-full)',
-                  border: '1px solid var(--color-action-primary)',
-                  backgroundColor: 'var(--color-action-subtle)',
-                  color: 'var(--color-action-primary)',
-                  cursor: isSeedingDemo ? 'not-allowed' : 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                }}
-                aria-label="Load demo stock inventory with stale and unverified records"
-              >
-                <Sparkles size={13} aria-hidden="true" />
-                <span>{isSeedingDemo ? 'Seeding...' : 'Load Demo Stock (5 items)'}</span>
-              </button>
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            {(['pending', 'verified', 'rejected', 'suspended'] as VerificationStatus[]).map((st) => {
+              const isActive = currentStatus === st;
+              return (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => handleSimulateStatus(st)}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '12px',
+                    fontWeight: isActive ? 700 : 500,
+                    borderRadius: 'var(--radius-full)',
+                    border: isActive
+                      ? '1px solid var(--color-action-primary)'
+                      : '1px solid var(--color-border-default)',
+                    backgroundColor: isActive ? 'var(--color-action-primary)' : 'var(--color-surface-canvas)',
+                    color: isActive ? '#ffffff' : 'var(--color-text-primary)',
+                    cursor: 'pointer',
+                    textTransform: 'capitalize',
+                  }}
+                  aria-pressed={isActive}
+                >
+                  {st}
+                </button>
+              );
+            })}
           </div>
         </aside>
-      )}
-
-      {/* Demo Seed Confirmation Notice */}
-      {demoSeedNotice && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            padding: '10px 14px',
-            backgroundColor: 'var(--color-action-subtle)',
-            border: '1px solid rgba(23, 107, 135, 0.3)',
-            borderRadius: 'var(--radius-md)',
-            color: 'var(--color-action-primary)',
-            marginBottom: '16px',
-            fontSize: '13px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '8px',
-          }}
-        >
-          <span>{demoSeedNotice}</span>
-          <button
-            type="button"
-            onClick={() => setDemoSeedNotice(null)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--color-action-primary)',
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: 600,
-            }}
-          >
-            Dismiss
-          </button>
-        </div>
       )}
 
       {/* Error alert if status retrieval failed */}
@@ -1075,30 +868,6 @@ export const PharmacyDashboard: React.FC = () => {
       {/* WORKSPACE SECTIONS: INVENTORY & PROFILE OVERVIEWS                 */}
       {/* ================================================================= */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        {/* SUMMARY CARDS: Executive operational counts computed truthfully from returned records */}
-        <OwnerDashboardSummaryCards
-          summary={summary}
-          isLoading={isInventoryLoading}
-          error={inventoryError}
-          onRetry={() => resolvedPharmacyId && loadInventory(resolvedPharmacyId)}
-          onSelectAttentionCard={handleScrollToAttention}
-          isVerified={currentStatus === 'verified'}
-        />
-
-        {/* QUALITY ATTENTION VIEW: Dedicated queue for stale, unverified, and reconfirmation records */}
-        {currentStatus === 'verified' && (
-          <StockQualityAttentionView
-            pharmacyId={resolvedPharmacyId}
-            pharmacyName={pharmacyName}
-            inventory={inventory}
-            isLoading={isInventoryLoading}
-            error={inventoryError}
-            onRefresh={() => resolvedPharmacyId && loadInventory(resolvedPharmacyId)}
-            onItemReconfirmed={handleItemReconfirmed}
-            isVerified={true}
-          />
-        )}
-
         {/* SECTION 1: MEDICINE INVENTORY WORKBENCH */}
         <section
           className="card"
