@@ -112,12 +112,3 @@ export interface PharmacyProfileUpdatePayload {
   openingHours?: string;
   structuredHours?: WeeklyHours;
 }
-
-export interface StockItem {
-  pharmacyId: string;
-  medicineId: string;
-  status: StockStatus;
-  quantity?: number;
-  updatedAt: string;
-  isStale?: boolean; // Set true if updatedAt > 24 hours ago
-}

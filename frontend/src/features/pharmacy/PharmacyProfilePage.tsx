@@ -14,8 +14,6 @@ import {
   createDefaultWeeklyHours,
   formatWeeklyHours,
   validateWeeklyHours,
-  seedSamplePharmacy,
-  isMockApiEnabled,
   PharmacyServiceError,
 } from '../../services/pharmacyService';
 import { LocationPicker } from '../../components/LocationPicker';
@@ -71,7 +69,7 @@ export const PharmacyProfilePage: React.FC = () => {
 
   const [streetAddress, setStreetAddress] = useState<string>('');
   const [area, setArea] = useState<string>('');
-  const [city, setCity] = useState<string>('Dhaka');
+  const [city, setCity] = useState<string>('');
   const [postalCode, setPostalCode] = useState<string>('');
 
   const [latitude, setLatitude] = useState<number>(DEFAULT_LATITUDE);
@@ -96,7 +94,7 @@ export const PharmacyProfilePage: React.FC = () => {
 
     setStreetAddress(profile.streetAddress || '');
     setArea(profile.area || '');
-    setCity(profile.city || 'Dhaka');
+    setCity(profile.city || '');
     setPostalCode(profile.postalCode || '');
 
     if (profile.latitude !== undefined && profile.longitude !== undefined) {
@@ -111,24 +109,6 @@ export const PharmacyProfilePage: React.FC = () => {
       setWeeklyHours(profile.structuredHours);
     } else {
       setWeeklyHours(createDefaultWeeklyHours());
-    }
-  };
-
-  const loadProfile = async () => {
-    setIsLoading(true);
-    setLoadError(null);
-    try {
-      const data = await getPharmacyProfile();
-      if (data) {
-        setServerProfile(data);
-        populateFields(data);
-      } else {
-        setServerProfile(null);
-      }
-    } catch {
-      setLoadError('Failed to load pharmacy profile from server.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -168,6 +148,9 @@ export const PharmacyProfilePage: React.FC = () => {
   // Check if form has unsaved modifications
   const isDirty = useMemo(() => {
     if (!serverProfile) return false;
+    const savedHoursFormatted = formatWeeklyHours(
+      serverProfile.structuredHours ?? createDefaultWeeklyHours()
+    );
     return (
       name !== (serverProfile.name || '') ||
       ownerName !== (serverProfile.ownerName || '') ||
@@ -175,10 +158,11 @@ export const PharmacyProfilePage: React.FC = () => {
       email !== (serverProfile.email || '') ||
       streetAddress !== (serverProfile.streetAddress || '') ||
       area !== (serverProfile.area || '') ||
-      city !== (serverProfile.city || 'Dhaka') ||
+      city !== (serverProfile.city || '') ||
       postalCode !== (serverProfile.postalCode || '') ||
       latitude !== (serverProfile.latitude ?? serverProfile.location?.coordinates[1] ?? DEFAULT_LATITUDE) ||
-      longitude !== (serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? DEFAULT_LONGITUDE)
+      longitude !== (serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? DEFAULT_LONGITUDE) ||
+      formatWeeklyHours(weeklyHours) !== savedHoursFormatted
     );
   }, [
     serverProfile,
@@ -192,6 +176,7 @@ export const PharmacyProfilePage: React.FC = () => {
     postalCode,
     latitude,
     longitude,
+    weeklyHours,
   ]);
 
   // Client-side field validator
@@ -364,11 +349,6 @@ export const PharmacyProfilePage: React.FC = () => {
     }
   };
 
-  const handleSeedSample = () => {
-    seedSamplePharmacy('verified');
-    loadProfile();
-  };
-
   // Determine current day of week for highlighting today's hours
   const currentDayIndex = new Date().getDay(); // 0 is Sunday, 1 is Monday...
   const dayKeyMap: DayOfWeek[] = [
@@ -466,29 +446,6 @@ export const PharmacyProfilePage: React.FC = () => {
             >
               <span>Submit Pharmacy Application</span>
             </Link>
-
-            {isMockApiEnabled() && (
-              <button
-                type="button"
-                onClick={handleSeedSample}
-                className="btn-secondary"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '12px 20px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border-default)',
-                  backgroundColor: 'var(--color-surface-panel)',
-                  color: 'var(--color-text-secondary)',
-                  cursor: 'pointer',
-                }}
-              >
-                <span>Load Sample Pharmacy (Dev Mode)</span>
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -1324,10 +1281,10 @@ export const PharmacyProfilePage: React.FC = () => {
                   <div style={{ marginLeft: 'auto' }}>
                     <a
                       href={`https://www.openstreetmap.org/?mlat=${
-                        serverProfile.latitude ?? serverProfile.location?.coordinates[1]
-                      }&mlon=${serverProfile.longitude ?? serverProfile.location?.coordinates[0]}#map=16/${
-                        serverProfile.latitude ?? serverProfile.location?.coordinates[1]
-                      }/${serverProfile.longitude ?? serverProfile.location?.coordinates[0]}`}
+                        serverProfile.latitude ?? serverProfile.location?.coordinates[1] ?? DEFAULT_LATITUDE
+                      }&mlon=${serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? DEFAULT_LONGITUDE}#map=16/${
+                        serverProfile.latitude ?? serverProfile.location?.coordinates[1] ?? DEFAULT_LATITUDE
+                      }/${serverProfile.longitude ?? serverProfile.location?.coordinates[0] ?? DEFAULT_LONGITUDE}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{
@@ -1630,7 +1587,7 @@ export const PharmacyProfilePage: React.FC = () => {
                   Issuing Regulatory Body
                 </span>
                 <span style={{ fontSize: '14px', color: 'var(--color-text-primary)', fontWeight: 500 }}>
-                  {serverProfile.issuingAuthority || 'Directorate General of Drug Administration (DGDA)'}
+                  {serverProfile.issuingAuthority || 'Not specified'}
                 </span>
               </div>
 
