@@ -524,9 +524,9 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
                   borderRadius: 'var(--radius-md)',
                   cursor: 'pointer',
                 }}
-                aria-label={`View pharmacy and medicine details for ${pharmacy.pharmacyName}`}
+                aria-label={`Reserve for pickup at ${pharmacy.pharmacyName}`}
               >
-                <span>View details</span>
+                <span>Reserve for pickup</span>
                 <ChevronRight size={14} aria-hidden="true" />
               </button>
 
