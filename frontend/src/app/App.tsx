@@ -2,6 +2,8 @@
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './AuthProvider';
 import { Navbar } from '../components/Navbar';
+import { WelcomeRoleModal } from '../components/WelcomeRoleModal';
+import { PharmacyStockReminderManager } from '../components/PharmacyStockReminderManager';
 import { AppRoutes } from './routes';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import '../index.css';
@@ -12,7 +14,6 @@ export function App() {
       <BrowserRouter>
         <AuthProvider>
           <div
-            className="app-layout"
             style={{
               minHeight: '100vh',
               display: 'flex',
@@ -23,6 +24,12 @@ export function App() {
           >
             {/* Global Header */}
             <Navbar />
+
+            {/* Welcome User-Type Selection Modal */}
+            <WelcomeRoleModal />
+
+            {/* Pharmacy Owner Stock Reminder Pop-ups */}
+            <PharmacyStockReminderManager />
 
             {/* Main Application Content */}
             <main style={{ flex: 1 }}>

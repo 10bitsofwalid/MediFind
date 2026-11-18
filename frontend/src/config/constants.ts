@@ -2,8 +2,6 @@
 
 export const DEFAULT_LATITUDE = Number(import.meta.env.VITE_DEFAULT_LAT) || 23.8103;
 export const DEFAULT_LONGITUDE = Number(import.meta.env.VITE_DEFAULT_LNG) || 90.4125;
-export const DEFAULT_SEARCH_RADIUS_KM = Number(import.meta.env.VITE_DEFAULT_SEARCH_RADIUS_KM) || 5;
-export const OSRM_ROUTING_URL = import.meta.env.VITE_OSRM_API_URL || 'https://router.project-osrm.org';
 
 export const PRESET_LOCATIONS = [
   { name: 'Dhaka Central', lat: 23.8103, lng: 90.4125 },

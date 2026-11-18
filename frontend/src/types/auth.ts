@@ -11,15 +11,17 @@ export interface User {
   pharmacyId?: string;
 }
 
-export interface AuthState {
-  user: User | null;
-  token: string | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-}
-
 export interface LoginCredentials {
   email: string;
   password?: string;
+  expectedRole?: Role;
+}
+
+export interface RegisterPayload {
+  name: string;
+  email: string;
+  phone?: string;
+  password: string;
+  role: Role;
 }
 

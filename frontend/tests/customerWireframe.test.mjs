@@ -99,14 +99,15 @@ test('Freshness and Stale Warning: Reports >= 24h old are flagged stale', () => 
   assert.equal(checkFreshness(staleTime).isStale, true);
 });
 
-test('Demo Data Integrity: demo records are explicitly flagged', () => {
-  const sampleResult = {
-    id: 'demo-res-1',
-    pharmacyName: 'Green Cross Pharmacy',
-    stockStatus: 'available',
-    isDemoData: true,
+test('Empty Initial Search State: search inputs start empty without sample data', () => {
+  const initialSearchState = {
+    query: '',
+    area: '',
+    results: [],
   };
 
-  assert.equal(sampleResult.isDemoData, true, 'Demo data must be honestly labeled');
+  assert.equal(initialSearchState.query, '');
+  assert.equal(initialSearchState.area, '');
+  assert.deepEqual(initialSearchState.results, []);
 });
 

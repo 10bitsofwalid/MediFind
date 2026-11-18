@@ -10,6 +10,7 @@ import type {
   DayOfWeek,
   VerificationStatus,
 } from '../types/pharmacy';
+import { PHARMACY_STATUS_UPDATED_EVENT } from './stockReminderService';
 
 const DEFAULT_MOCK_STORAGE_KEY = 'medifind_mock_pharmacy_application';
 
@@ -17,7 +18,7 @@ const DEFAULT_MOCK_STORAGE_KEY = 'medifind_mock_pharmacy_application';
  * Derives a user-scoped mock storage key so different logged-in sessions
  * maintain their own independent application and verification states.
  */
-export function getMockStorageKey(): string {
+function getMockStorageKey(): string {
   try {
     const rawUser = localStorage.getItem('user');
     if (rawUser) {
@@ -50,7 +51,6 @@ export class PharmacyServiceError extends Error {
   code?: string;
   status?: number;
   fields?: Record<string, string>;
-  response?: { status: number; data: unknown };
 
   constructor(message: string, code?: string, status?: number, fields?: Record<string, string>) {
     super(message);
@@ -65,7 +65,7 @@ export class PharmacyServiceError extends Error {
  * Validates that an object conforms to PharmacyApplicationResponse.
  * Protects against HTML strings returned by SPA fallback when APIs are offline.
  */
-export function isValidApplicationResponse(data: unknown): data is PharmacyApplicationResponse {
+function isValidApplicationResponse(data: unknown): data is PharmacyApplicationResponse {
   if (typeof data !== 'object' || data === null) return false;
   const obj = data as Record<string, unknown>;
   if (!('applicationId' in obj) || !('data' in obj) || !('status' in obj)) return false;
@@ -226,23 +226,12 @@ export async function submitPharmacyApplication(
 
     // Simulate server-side duplicate license check
     if (payload.licenseNo.trim().toUpperCase() === 'DUPLICATE-TEST') {
-      const error = new PharmacyServiceError(
+      throw new PharmacyServiceError(
         'License number is already registered.',
         'DUPLICATE_LICENSE',
         409,
         { licenseNo: 'License number already registered.' }
       );
-      error.response = {
-        status: 409,
-        data: {
-          error: {
-            code: 'DUPLICATE_LICENSE',
-            message: 'A pharmacy with this license number is already registered or undergoing review.',
-            fields: { licenseNo: 'License number already registered.' },
-          },
-        },
-      };
-      throw error;
     }
 
     const applicationResponse: PharmacyApplicationResponse = {
@@ -474,16 +463,23 @@ export async function updatePharmacyProfile(
     await new Promise((resolve) => setTimeout(resolve, 600));
 
     const savedRaw = getStoredMockApplication();
-    let app: PharmacyApplicationResponse;
+    if (!savedRaw) {
+      throw new PharmacyServiceError(
+        'No pharmacy application found. Please submit an application first.',
+        'NOT_FOUND',
+        404
+      );
+    }
 
-    if (savedRaw) {
-      try {
-        app = JSON.parse(savedRaw);
-      } catch {
-        app = seedSamplePharmacy('pending');
-      }
-    } else {
-      app = seedSamplePharmacy('pending');
+    let app: PharmacyApplicationResponse;
+    try {
+      app = JSON.parse(savedRaw);
+    } catch {
+      throw new PharmacyServiceError(
+        'Stored pharmacy application data is invalid. Please resubmit your application.',
+        'INVALID_STORAGE',
+        400
+      );
     }
 
     // Merge updated payload fields into application data
@@ -574,38 +570,100 @@ export async function updatePharmacyProfile(
 }
 
 /**
- * Updates opening hours schedule on the server.
- * Endpoint: PUT /owner/pharmacy/opening-hours
+ * Changes mock verification status in development mode to test
+ * Pending, Verified, Rejected, and Suspended UI flows for a submitted application.
  */
-export async function updateOpeningHours(
-  hours: WeeklyHours
-): Promise<{ openingHours: string; structuredHours: WeeklyHours }> {
-  const err = validateWeeklyHours(hours);
-  if (err) {
-    throw new PharmacyServiceError(err, 'VALIDATION_ERROR', 422, { openingHours: err });
+export function setMockVerificationStatus(
+  status: VerificationStatus,
+  decisionReason?: string,
+  nextStep?: string
+): PharmacyApplicationResponse | null {
+  const saved = getStoredMockApplication();
+  if (!saved) return null;
+
+  let app: PharmacyApplicationResponse;
+  try {
+    app = JSON.parse(saved);
+  } catch {
+    return null;
   }
 
-  const formatted = formatWeeklyHours(hours);
+  app.status = status;
+  app.verificationReason = decisionReason;
+  app.decisionReason = decisionReason;
+  app.nextStep = nextStep;
 
+  localStorage.setItem(getMockStorageKey(), JSON.stringify(app));
+  window.dispatchEvent(new CustomEvent(PHARMACY_STATUS_UPDATED_EVENT));
+  return app;
+}
+
+/**
+ * Deletes the owner's submitted pharmacy application if it has not been approved.
+ * Endpoint: DELETE /owner/pharmacy-application
+ */
+export async function deletePharmacyApplication(applicationId?: string): Promise<void> {
   if (isMockApiEnabled()) {
-    await updatePharmacyProfile({
-      structuredHours: hours,
-      openingHours: formatted,
-    });
-    return { openingHours: formatted, structuredHours: hours };
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const savedRaw = getStoredMockApplication();
+    if (!savedRaw) {
+      throw new PharmacyServiceError(
+        'No submitted pharmacy application found to delete.',
+        'NOT_FOUND',
+        404
+      );
+    }
+
+    let app: PharmacyApplicationResponse;
+    try {
+      app = JSON.parse(savedRaw);
+    } catch {
+      clearMockApplication();
+      return;
+    }
+
+    if (app.status === 'verified') {
+      throw new PharmacyServiceError(
+        'Approved pharmacy applications cannot be deleted.',
+        'FORBIDDEN_APPROVED',
+        403
+      );
+    }
+
+    if (app.status === 'suspended') {
+      throw new PharmacyServiceError(
+        'Suspended pharmacy records cannot be deleted. Contact MediFind Compliance for assistance.',
+        'FORBIDDEN_SUSPENDED',
+        403
+      );
+    }
+
+    const userKey = getMockStorageKey();
+    localStorage.removeItem(userKey);
+    const legacyRaw = localStorage.getItem(DEFAULT_MOCK_STORAGE_KEY);
+    if (legacyRaw) {
+      try {
+        const legacyParsed = JSON.parse(legacyRaw) as PharmacyApplicationResponse;
+        if (!applicationId || legacyParsed.applicationId === app.applicationId) {
+          localStorage.removeItem(DEFAULT_MOCK_STORAGE_KEY);
+        }
+      } catch {
+        localStorage.removeItem(DEFAULT_MOCK_STORAGE_KEY);
+      }
+    }
+    return;
   }
 
   try {
-    const res = await api.put('/owner/pharmacy/opening-hours', {
-      structuredHours: hours,
-      openingHours: formatted,
-    });
-    return res.data?.data || res.data || { openingHours: formatted, structuredHours: hours };
+    const endpoint = applicationId
+      ? `/owner/pharmacy-applications/${applicationId}`
+      : '/owner/pharmacy-application';
+    await api.delete(endpoint);
   } catch (err: unknown) {
     if (axios.isAxiosError(err) && err.response?.data?.error) {
       const errorData = err.response.data.error;
       throw new PharmacyServiceError(
-        errorData.message || 'Failed to update operating hours schedule.',
+        errorData.message || 'Failed to delete pharmacy application.',
         errorData.code,
         err.response.status,
         errorData.fields
@@ -616,99 +674,9 @@ export async function updateOpeningHours(
 }
 
 /**
- * Changes mock verification status in development mode to test
- * Pending, Verified, Rejected, and Suspended UI flows.
- */
-export function setMockVerificationStatus(
-  status: VerificationStatus,
-  decisionReason?: string,
-  nextStep?: string
-): PharmacyApplicationResponse | null {
-  const saved = getStoredMockApplication();
-  let app: PharmacyApplicationResponse;
-
-  if (saved) {
-    try {
-      app = JSON.parse(saved);
-    } catch {
-      app = seedSamplePharmacy(status);
-    }
-  } else {
-    app = seedSamplePharmacy(status);
-  }
-
-  app.status = status;
-  app.verificationReason = decisionReason;
-  app.decisionReason = decisionReason;
-  app.nextStep = nextStep;
-
-  localStorage.setItem(getMockStorageKey(), JSON.stringify(app));
-  return app;
-}
-
-/**
- * Seeds a realistic sample pharmacy in mock storage for testing and reviewer evaluation.
- */
-export function seedSamplePharmacy(
-  status: VerificationStatus = 'pending'
-): PharmacyApplicationResponse {
-  const defaultHours = createDefaultWeeklyHours();
-  const samplePayload: PharmacyApplicationPayload = {
-    name: 'MediCare Central Pharmacy',
-    ownerName: 'Dr. Rafiqul Islam, R.Ph',
-    phone: '+8801712345678',
-    email: 'contact@medicarecentral.com',
-    streetAddress: 'House 42, Road 11, Block D',
-    area: 'Banani',
-    city: 'Dhaka',
-    postalCode: '1213',
-    formattedAddress: 'House 42, Road 11, Block D, Banani, Dhaka - 1213',
-    licenseNo: 'DL-DHK-2024-8849',
-    issuingAuthority: 'Directorate General of Drug Administration (DGDA)',
-    licenseExpiryDate: '2028-12-31',
-    licenseType: 'Retail Drug Trade License (Model Pharmacy)',
-    latitude: 23.7925,
-    longitude: 90.4078,
-    location: {
-      type: 'Point',
-      coordinates: [90.4078, 23.7925],
-    },
-    openingHours: formatWeeklyHours(defaultHours),
-    structuredHours: defaultHours,
-    notes: 'Ground floor corner pharmacy near Banani Supermarket with temperature-controlled medicine storage.',
-  };
-
-  let reason: string | undefined;
-  let nextStep: string | undefined;
-
-  if (status === 'rejected') {
-    reason = 'Uploaded Drug Trade License certificate expired or name does not match national registry.';
-    nextStep = 'Please upload a renewed DGDA trade certificate and correct the legal trade name in your application.';
-  } else if (status === 'suspended') {
-    reason = 'Repeated customer complaints regarding inaccurate reported stock availability under investigation.';
-    nextStep = 'Contact MediFind Compliance at compliance@medifind.dev with your audit reference number to arrange re-audit.';
-  }
-
-  const sampleApp: PharmacyApplicationResponse = {
-    applicationId: 'app_sample_demo_882',
-    pharmacyId: 'ph_sample_demo_882',
-    status,
-    submittedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    message: 'Pharmacy onboarding application in state: ' + status,
-    data: samplePayload,
-    verificationReason: reason,
-    decisionReason: reason,
-    nextStep,
-  };
-
-  localStorage.setItem(getMockStorageKey(), JSON.stringify(sampleApp));
-  return sampleApp;
-}
-
-/**
  * Clears mock application storage (for testing purposes).
  */
-export function clearMockApplication(): void {
+function clearMockApplication(): void {
   localStorage.removeItem(getMockStorageKey());
   localStorage.removeItem(DEFAULT_MOCK_STORAGE_KEY);
 }

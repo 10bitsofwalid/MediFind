@@ -6,13 +6,12 @@ import 'leaflet/dist/leaflet.css';
 import { DEFAULT_LATITUDE, DEFAULT_LONGITUDE } from '../config/constants';
 import { ErrorBoundary } from './ErrorBoundary';
 
-export interface MapMarkerItem {
+interface MapMarkerItem {
   id: string;
   name: string;
   latitude: number;
   longitude: number;
   address?: string;
-  phone?: string;
   statusLabel?: string;
 }
 

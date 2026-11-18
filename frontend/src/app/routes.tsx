@@ -3,6 +3,7 @@ import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { useAuth } from './useAuth';
 
 // Lazy-loaded routes for code splitting and optimized bundle size (resolves TECH-06)
 const PharmacyRegisterPage = lazy(() =>
@@ -11,8 +12,20 @@ const PharmacyRegisterPage = lazy(() =>
 const PharmacyDashboard = lazy(() =>
   import('../features/pharmacy/PharmacyDashboard').then((m) => ({ default: m.PharmacyDashboard }))
 );
+const PharmacyInventoryPage = lazy(() =>
+  import('../features/pharmacy/PharmacyInventoryPage').then((m) => ({ default: m.PharmacyInventoryPage }))
+);
 const PharmacyProfilePage = lazy(() =>
   import('../features/pharmacy/PharmacyProfilePage').then((m) => ({ default: m.PharmacyProfilePage }))
+);
+const AdminDashboard = lazy(() =>
+  import('../features/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard }))
+);
+const VerificationQueue = lazy(() =>
+  import('../features/admin/VerificationQueue').then((m) => ({ default: m.VerificationQueue }))
+);
+const CatalougeManager = lazy(() =>
+  import('../features/admin/CatalougeManager').then((m) => ({ default: m.CatalougeManager }))
 );
 const LoginPage = lazy(() =>
   import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage }))
@@ -48,75 +61,151 @@ const RouteLoading: React.FC = () => (
   </div>
 );
 
+const RootEntry: React.FC = () => {
+  const { user, selectedUserType } = useAuth();
+  const effectiveRole = user?.role ?? selectedUserType;
+
+  if (effectiveRole === 'PHARMACY') {
+    return <Navigate to={user ? '/pharmacy/dashboard' : '/login'} replace />;
+  }
+  if (effectiveRole === 'ADMIN') {
+    return <Navigate to={user ? '/admin/dashboard' : '/login'} replace />;
+  }
+  if (effectiveRole === 'CUSTOMER') {
+    return (
+      <ErrorBoundary fallbackTitle="Home Page Error">
+        <HomePage />
+      </ErrorBoundary>
+    );
+  }
+
+  // Neutral background until user selects a user type in the Welcome modal
+  return <div style={{ minHeight: '60vh' }} aria-hidden="true" />;
+};
+
+const CatchAllRedirect: React.FC = () => {
+  const { user, selectedUserType } = useAuth();
+  const effectiveRole = user?.role ?? selectedUserType;
+
+  if (effectiveRole === 'PHARMACY') {
+    return <Navigate to={user ? '/pharmacy/dashboard' : '/login'} replace />;
+  }
+  if (effectiveRole === 'ADMIN') {
+    return <Navigate to={user ? '/admin/dashboard' : '/login'} replace />;
+  }
+  return <Navigate to="/" replace />;
+};
+
 export const AppRoutes: React.FC = () => {
   return (
     <Suspense fallback={<RouteLoading />}>
       <Routes>
-        {/* Public Customer Discovery Routes (Developer 1) */}
-        <Route
-          path="/"
-          element={
-            <ErrorBoundary fallbackTitle="Home Page Error">
-              <HomePage />
-            </ErrorBoundary>
-          }
-        />
+        {/* Role-aware Entry Route */}
+        <Route path="/" element={<RootEntry />} />
+
+        {/* Customer Discovery Routes (CUSTOMER only) */}
         <Route
           path="/search"
           element={
-            <ErrorBoundary fallbackTitle="Search Results Error">
-              <SearchResults />
-            </ErrorBoundary>
+            <ProtectedRoute allowedRoles={['CUSTOMER']} requireAuth={false}>
+              <ErrorBoundary fallbackTitle="Search Results Error">
+                <SearchResults />
+              </ErrorBoundary>
+            </ProtectedRoute>
           }
         />
         <Route
           path="/medicine"
           element={
-            <ErrorBoundary fallbackTitle="Medicine Details Error">
-              <MedicineDetailPage />
-            </ErrorBoundary>
+            <ProtectedRoute allowedRoles={['CUSTOMER']} requireAuth={false}>
+              <ErrorBoundary fallbackTitle="Medicine Details Error">
+                <MedicineDetailPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
           }
         />
         <Route
           path="/medicine/:id"
           element={
-            <ErrorBoundary fallbackTitle="Medicine Details Error">
-              <MedicineDetailPage />
-            </ErrorBoundary>
+            <ProtectedRoute allowedRoles={['CUSTOMER']} requireAuth={false}>
+              <ErrorBoundary fallbackTitle="Medicine Details Error">
+                <MedicineDetailPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
           }
         />
 
-        {/* Authentication Routes (resolves TECH-02 & TECH-03) */}
+        {/* Authentication Routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
 
-        {/* Owner-facing Pharmacy Registration & Onboarding Flow */}
-        <Route path="/pharmacy/register" element={<PharmacyRegisterPage />} />
-
-        {/* Pharmacy Workspace Dashboard & Verification Status Tracking */}
+        {/* Pharmacy Owner Routes (PHARMACY only) */}
+        <Route
+          path="/pharmacy/register"
+          element={
+            <ProtectedRoute allowedRoles={['PHARMACY']} requireAuth={false}>
+              <PharmacyRegisterPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/pharmacy/dashboard"
           element={
-            <ProtectedRoute allowedRoles={['PHARMACY', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['PHARMACY']}>
               <PharmacyDashboard />
             </ProtectedRoute>
           }
         />
-
-        {/* Pharmacy Profile Viewing & Editing Flow */}
+        <Route
+          path="/pharmacy/inventory"
+          element={
+            <ProtectedRoute allowedRoles={['PHARMACY']}>
+              <PharmacyInventoryPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/pharmacy/profile"
           element={
-            <ProtectedRoute allowedRoles={['PHARMACY', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['PHARMACY']}>
               <PharmacyProfilePage />
             </ProtectedRoute>
           }
         />
-
         <Route path="/pharmacy/status" element={<Navigate to="/pharmacy/dashboard" replace />} />
 
+        {/* Administrator Routes (ADMIN only) */}
+        <Route
+          path="/admin"
+          element={<Navigate to="/admin/dashboard" replace />}
+        />
+        <Route
+          path="/admin/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/verification"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <VerificationQueue />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/catalogue"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <CatalougeManager />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Catch-all route */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<CatchAllRedirect />} />
       </Routes>
     </Suspense>
   );

@@ -142,4 +142,3 @@ export const MedicineSuggestions: React.FC<MedicineSuggestionsProps> = ({
     </ul>
   );
 };
-

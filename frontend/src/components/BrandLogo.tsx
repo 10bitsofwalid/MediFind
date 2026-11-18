@@ -3,7 +3,6 @@ import React from 'react';
 
 interface BrandLogoProps {
   size?: number;
-  className?: string;
   style?: React.CSSProperties;
 }
 
@@ -13,7 +12,7 @@ interface BrandLogoProps {
  * 2. Medicine — Clinical cross with soft rounded pill geometry
  * 3. Pharmacy — Official regulatory dispensary symbol
  */
-export const BrandLogoIcon: React.FC<{ size?: number; color?: string }> = ({
+const BrandLogoIcon: React.FC<{ size?: number; color?: string }> = ({
   size = 22,
   color = '#ffffff',
 }) => (
@@ -47,7 +46,6 @@ export const BrandLogoIcon: React.FC<{ size?: number; color?: string }> = ({
  */
 export const BrandLogo: React.FC<BrandLogoProps> = ({
   size = 36,
-  className = 'brand-logo-icon',
   style,
 }) => {
   const iconSize = Math.round(size * 0.6);
@@ -55,7 +53,6 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 
   return (
     <div
-      className={className}
       style={{
         width: `${size}px`,
         height: `${size}px`,
