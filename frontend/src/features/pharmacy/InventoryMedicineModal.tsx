@@ -147,6 +147,16 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const firstStatusBtnRef = useRef<HTMLButtonElement | null>(null);
+  const errorBannerRef = useRef<HTMLDivElement | null>(null);
+
+  const clearModalFieldError = (field: string) => {
+    if (!fieldErrors[field]) return;
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   // Restore focus to the trigger control when the dialog closes
   useEffect(() => {
@@ -262,6 +272,10 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
     if (Object.keys(nextFieldErrors).length > 0) {
       setFieldErrors(nextFieldErrors);
       setErrorMsg('Please review the highlighted fields below.');
+      requestAnimationFrame(() => {
+        errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        errorBannerRef.current?.focus();
+      });
       return;
     }
 
@@ -335,6 +349,10 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
         setFieldErrors(serverFields);
       }
       setErrorMsg(err instanceof Error ? err.message : 'Failed to save medicine information.');
+      requestAnimationFrame(() => {
+        errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        errorBannerRef.current?.focus();
+      });
     } finally {
       setIsSaving(false);
     }
@@ -369,18 +387,9 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
       }}
     >
       <div
-        className="card"
+        className="card pharmacy-modal-panel"
         style={{
-          width: '100%',
           maxWidth: '680px',
-          backgroundColor: 'var(--color-surface-panel)',
-          borderRadius: 'var(--radius-xl)',
-          border: '1px solid var(--color-border-default)',
-          boxShadow: 'var(--shadow-lg)',
-          padding: '24px',
-          maxHeight: 'calc(100vh - 32px)',
-          overflowY: 'auto',
-          position: 'relative',
         }}
       >
         {/* Header */}
@@ -410,8 +419,9 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
             disabled={isSaving}
             aria-label="Close modal"
             style={{
-              width: '40px',
-              height: '40px',
+              width: '44px',
+              height: '44px',
+              flexShrink: 0,
               borderRadius: 'var(--radius-full)',
               border: '1px solid var(--color-border-default)',
               backgroundColor: 'var(--color-surface-canvas)',
@@ -422,7 +432,7 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
               cursor: isSaving ? 'not-allowed' : 'pointer',
             }}
           >
-            <X size={17} aria-hidden="true" />
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
 
@@ -542,7 +552,7 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))',
                     gap: '8px',
                     marginBottom: '10px',
                   }}
@@ -551,7 +561,7 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                     <Search
                       size={15}
                       color="var(--color-text-secondary)"
-                      style={{ position: 'absolute', left: '10px', top: '13px', pointerEvents: 'none' }}
+                      style={{ position: 'absolute', left: '12px', top: '14px', pointerEvents: 'none' }}
                       aria-hidden="true"
                     />
                     <input
@@ -562,20 +572,16 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                       onChange={(e) => setCatalogueQuery(e.target.value)}
                       placeholder="Name, generic, or strength..."
                       disabled={isSaving}
+                      className="medifind-input"
                       style={{
-                        width: '100%',
-                        padding: '9px 10px 9px 32px',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--color-border-default)',
-                        backgroundColor: 'var(--color-surface-panel)',
+                        padding: '9px 10px 9px 34px',
                         fontSize: '13px',
-                        minHeight: '42px',
                       }}
                     />
                   </div>
 
                   <div>
-                    <label htmlFor="catalogue-form-filter" className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
+                    <label htmlFor="catalogue-form-filter" className="sr-only">
                       Filter catalogue by dosage form
                     </label>
                     <select
@@ -584,14 +590,10 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                       onChange={(e) => setCatalogueFormFilter(e.target.value)}
                       disabled={isSaving}
                       aria-label="Filter catalogue by dosage form"
+                      className="medifind-select"
                       style={{
-                        width: '100%',
                         padding: '9px 12px',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--color-border-default)',
-                        backgroundColor: 'var(--color-surface-panel)',
                         fontSize: '13px',
-                        minHeight: '42px',
                       }}
                     >
                       <option value="all">All dosage forms</option>
@@ -810,11 +812,13 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
 
         {errorMsg && (
           <div
+            ref={errorBannerRef}
+            tabIndex={-1}
             role="alert"
             style={{
               padding: '10px 14px',
               backgroundColor: 'var(--color-status-problem-bg)',
-              border: '1px solid rgba(180, 35, 47, 0.3)',
+              border: '1px solid var(--color-status-problem-border)',
               borderRadius: 'var(--radius-md)',
               color: 'var(--color-status-problem)',
               fontSize: '13px',
@@ -862,7 +866,7 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))',
                     gap: '14px',
                     marginBottom: '14px',
                   }}
@@ -878,25 +882,19 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                       id="med-name"
                       type="text"
                       value={medicineName}
-                      onChange={(e) => setMedicineName(e.target.value)}
+                      onChange={(e) => {
+                        setMedicineName(e.target.value);
+                        clearModalFieldError('medicineName');
+                      }}
                       placeholder="Enter medicine name"
                       disabled={isSaving || lockMedicineFields}
                       readOnly={lockMedicineFields}
                       aria-invalid={Boolean(fieldErrors.medicineName)}
-                      style={{
-                        width: '100%',
-                        padding: '9px 12px',
-                        borderRadius: 'var(--radius-md)',
-                        border: fieldErrors.medicineName
-                          ? '1px solid var(--color-status-problem)'
-                          : '1px solid var(--color-border-default)',
-                        backgroundColor: lockMedicineFields ? '#f8fafc' : 'var(--color-surface-panel)',
-                        fontSize: '14px',
-                        minHeight: '42px',
-                      }}
+                      aria-describedby={fieldErrors.medicineName ? 'med-name-error' : undefined}
+                      className={`medifind-input${fieldErrors.medicineName ? ' is-invalid' : ''}`}
                     />
                     {fieldErrors.medicineName && (
-                      <div style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
+                      <div id="med-name-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
                         {fieldErrors.medicineName}
                       </div>
                     )}
@@ -913,25 +911,19 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                       id="med-generic"
                       type="text"
                       value={genericName}
-                      onChange={(e) => setGenericName(e.target.value)}
+                      onChange={(e) => {
+                        setGenericName(e.target.value);
+                        clearModalFieldError('genericName');
+                      }}
                       placeholder="Enter generic compound"
                       disabled={isSaving || lockMedicineFields}
                       readOnly={lockMedicineFields}
                       aria-invalid={Boolean(fieldErrors.genericName)}
-                      style={{
-                        width: '100%',
-                        padding: '9px 12px',
-                        borderRadius: 'var(--radius-md)',
-                        border: fieldErrors.genericName
-                          ? '1px solid var(--color-status-problem)'
-                          : '1px solid var(--color-border-default)',
-                        backgroundColor: lockMedicineFields ? '#f8fafc' : 'var(--color-surface-panel)',
-                        fontSize: '14px',
-                        minHeight: '42px',
-                      }}
+                      aria-describedby={fieldErrors.genericName ? 'med-generic-error' : undefined}
+                      className={`medifind-input${fieldErrors.genericName ? ' is-invalid' : ''}`}
                     />
                     {fieldErrors.genericName && (
-                      <div style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
+                      <div id="med-generic-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
                         {fieldErrors.genericName}
                       </div>
                     )}
@@ -948,25 +940,19 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                       id="med-strength"
                       type="text"
                       value={strength}
-                      onChange={(e) => setStrength(e.target.value)}
+                      onChange={(e) => {
+                        setStrength(e.target.value);
+                        clearModalFieldError('strength');
+                      }}
                       placeholder="e.g. 500 mg"
                       disabled={isSaving || lockMedicineFields}
                       readOnly={lockMedicineFields}
                       aria-invalid={Boolean(fieldErrors.strength)}
-                      style={{
-                        width: '100%',
-                        padding: '9px 12px',
-                        borderRadius: 'var(--radius-md)',
-                        border: fieldErrors.strength
-                          ? '1px solid var(--color-status-problem)'
-                          : '1px solid var(--color-border-default)',
-                        backgroundColor: lockMedicineFields ? '#f8fafc' : 'var(--color-surface-panel)',
-                        fontSize: '14px',
-                        minHeight: '42px',
-                      }}
+                      aria-describedby={fieldErrors.strength ? 'med-strength-error' : undefined}
+                      className={`medifind-input${fieldErrors.strength ? ' is-invalid' : ''}`}
                     />
                     {fieldErrors.strength && (
-                      <div style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
+                      <div id="med-strength-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
                         {fieldErrors.strength}
                       </div>
                     )}
@@ -982,17 +968,14 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                     <select
                       id="med-form"
                       value={form}
-                      onChange={(e) => setForm(e.target.value)}
-                      disabled={isSaving || lockMedicineFields}
-                      style={{
-                        width: '100%',
-                        padding: '9px 12px',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--color-border-default)',
-                        backgroundColor: lockMedicineFields ? '#f8fafc' : 'var(--color-surface-panel)',
-                        fontSize: '14px',
-                        minHeight: '42px',
+                      onChange={(e) => {
+                        setForm(e.target.value);
+                        clearModalFieldError('form');
                       }}
+                      disabled={isSaving || lockMedicineFields}
+                      aria-invalid={Boolean(fieldErrors.form)}
+                      aria-describedby={fieldErrors.form ? 'med-form-error' : undefined}
+                      className={`medifind-select${fieldErrors.form ? ' is-invalid' : ''}`}
                     >
                       {DOSAGE_FORMS.map((f) => (
                         <option key={f} value={f}>
@@ -1000,6 +983,11 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                         </option>
                       ))}
                     </select>
+                    {fieldErrors.form && (
+                      <div id="med-form-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}>
+                        {fieldErrors.form}
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -1017,15 +1005,7 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                       placeholder="Enter manufacturer"
                       disabled={isSaving || lockMedicineFields}
                       readOnly={lockMedicineFields}
-                      style={{
-                        width: '100%',
-                        padding: '9px 12px',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--color-border-default)',
-                        backgroundColor: lockMedicineFields ? '#f8fafc' : 'var(--color-surface-panel)',
-                        fontSize: '14px',
-                        minHeight: '42px',
-                      }}
+                      className="medifind-input"
                     />
                   </div>
                 </div>
@@ -1062,7 +1042,7 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                             : '1px solid var(--color-border-default)',
                           backgroundColor: selected ? opt.bg : 'var(--color-surface-panel)',
                           color: selected ? opt.color : 'var(--color-text-secondary)',
-                          minHeight: '42px',
+                          minHeight: '44px',
                           padding: '8px 16px',
                           fontSize: '13px',
                         }}
@@ -1079,7 +1059,7 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))',
                   gap: '14px',
                   marginBottom: '14px',
                 }}
@@ -1098,25 +1078,20 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                     step="1"
                     inputMode="numeric"
                     value={quantityText}
-                    onChange={(e) => setQuantityText(e.target.value)}
+                    onChange={(e) => {
+                      setQuantityText(e.target.value);
+                      clearModalFieldError('quantity');
+                    }}
                     placeholder="Whole number (e.g. 25)"
                     disabled={isSaving}
                     aria-invalid={Boolean(fieldErrors.quantity)}
                     aria-describedby={fieldErrors.quantity ? 'med-quantity-error' : undefined}
-                    style={{
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: 'var(--radius-md)',
-                      border: fieldErrors.quantity
-                        ? '1px solid var(--color-status-problem)'
-                        : '1px solid var(--color-border-default)',
-                      fontSize: '14px',
-                      minHeight: '42px',
-                    }}
+                    className={`medifind-input${fieldErrors.quantity ? ' is-invalid' : ''}`}
                   />
                   {fieldErrors.quantity && (
                     <div
                       id="med-quantity-error"
+                      role="alert"
                       style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}
                     >
                       {fieldErrors.quantity}
@@ -1138,25 +1113,20 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                     step="0.01"
                     inputMode="decimal"
                     value={priceText}
-                    onChange={(e) => setPriceText(e.target.value)}
+                    onChange={(e) => {
+                      setPriceText(e.target.value);
+                      clearModalFieldError('price');
+                    }}
                     placeholder="e.g. 12.50"
                     disabled={isSaving}
                     aria-invalid={Boolean(fieldErrors.price)}
                     aria-describedby={fieldErrors.price ? 'med-price-error' : undefined}
-                    style={{
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: 'var(--radius-md)',
-                      border: fieldErrors.price
-                        ? '1px solid var(--color-status-problem)'
-                        : '1px solid var(--color-border-default)',
-                      fontSize: '14px',
-                      minHeight: '42px',
-                    }}
+                    className={`medifind-input${fieldErrors.price ? ' is-invalid' : ''}`}
                   />
                   {fieldErrors.price && (
                     <div
                       id="med-price-error"
+                      role="alert"
                       style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px' }}
                     >
                       {fieldErrors.price}
@@ -1179,14 +1149,7 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="e.g. Strip of 10 tablets, shelf B2"
                   disabled={isSaving}
-                  style={{
-                    width: '100%',
-                    padding: '9px 12px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border-default)',
-                    fontSize: '14px',
-                    minHeight: '42px',
-                  }}
+                  className="medifind-input"
                 />
               </div>
 
@@ -1198,6 +1161,7 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                       alignItems: 'center',
                       gap: '8px',
                       fontSize: '13px',
+                      minHeight: '36px',
                       cursor: lockMedicineFields ? 'default' : 'pointer',
                     }}
                   >
@@ -1227,10 +1191,11 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                 borderRadius: 'var(--radius-md)',
                 border: '1px solid var(--color-border-default)',
                 backgroundColor: 'var(--color-surface-panel)',
+                color: 'var(--color-text-primary)',
                 fontSize: '14px',
                 fontWeight: 600,
                 cursor: isSaving ? 'not-allowed' : 'pointer',
-                minHeight: '42px',
+                minHeight: '44px',
               }}
             >
               Cancel
@@ -1248,10 +1213,14 @@ export const InventoryMedicineModal: React.FC<InventoryMedicineModalProps> = ({
                 fontSize: '14px',
                 cursor: isSaving || (mode === 'add' && !showDetailsForm) ? 'not-allowed' : 'pointer',
                 opacity: isSaving || (mode === 'add' && !showDetailsForm) ? 0.65 : 1,
-                minHeight: '42px',
+                minHeight: '44px',
               }}
             >
-              <Check size={15} aria-hidden="true" />
+              {isSaving ? (
+                <span className="spinner-small" aria-hidden="true" />
+              ) : (
+                <Check size={15} aria-hidden="true" />
+              )}
               <span>
                 {isSaving
                   ? 'Saving...'

@@ -34,14 +34,31 @@ export const PharmacyInventoryPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [appRes, profileRes] = await Promise.all([
-        getPharmacyApplication().catch(() => null),
-        getPharmacyProfile().catch(() => null),
+      const [appResult, profileResult] = await Promise.allSettled([
+        getPharmacyApplication(),
+        getPharmacyProfile(),
       ]);
-      setApplication(appRes);
-      setPharmacy(profileRes);
-    } catch {
-      setError('Could not verify your pharmacy workspace status. Please try again.');
+
+      const appRes = appResult.status === 'fulfilled' ? appResult.value : null;
+      const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : null;
+
+      if (appResult.status === 'rejected' && profileResult.status === 'rejected') {
+        const reason = profileResult.reason || appResult.reason;
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : 'Could not verify your pharmacy workspace status. Please try again.'
+        );
+      } else {
+        setApplication(appRes);
+        setPharmacy(profileRes);
+      }
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not verify your pharmacy workspace status. Please try again.'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -49,16 +66,25 @@ export const PharmacyInventoryPage: React.FC = () => {
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([
-      getPharmacyApplication().catch(() => null),
-      getPharmacyProfile().catch(() => null),
-    ])
-      .then(([appRes, profileRes]) => {
-        if (mounted) {
+    Promise.allSettled([getPharmacyApplication(), getPharmacyProfile()])
+      .then(([appResult, profileResult]) => {
+        if (!mounted) return;
+        const appRes = appResult.status === 'fulfilled' ? appResult.value : null;
+        const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : null;
+
+        if (appResult.status === 'rejected' && profileResult.status === 'rejected') {
+          const reason = profileResult.reason || appResult.reason;
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : 'Could not verify your pharmacy workspace status. Please try again.'
+          );
+        } else {
           setApplication(appRes);
           setPharmacy(profileRes);
-          setIsLoading(false);
+          setError(null);
         }
+        setIsLoading(false);
       })
       .catch(() => {
         if (mounted) {
@@ -77,19 +103,33 @@ export const PharmacyInventoryPage: React.FC = () => {
       <div
         role="status"
         aria-live="polite"
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '60vh',
-          flexDirection: 'column',
-          gap: '12px',
-        }}
+        aria-busy="true"
+        style={{ maxWidth: '1080px', margin: '0 auto', padding: '24px 16px 80px' }}
       >
-        <div className="spinner" aria-hidden="true" />
-        <span style={{ color: 'var(--color-text-secondary)', fontSize: '15px' }}>
-          Loading inventory workbench...
-        </span>
+        <span className="sr-only">Loading inventory workbench...</span>
+        <div className="skeleton-shimmer" style={{ width: '170px', height: '18px', marginBottom: '18px' }} />
+        <div
+          style={{
+            paddingBottom: '18px',
+            marginBottom: '22px',
+            borderBottom: '1px solid var(--color-border-default)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}
+        >
+          <div className="skeleton-shimmer" style={{ width: '250px', maxWidth: '100%', height: '30px' }} />
+          <div className="skeleton-shimmer" style={{ width: '340px', maxWidth: '100%', height: '16px' }} />
+        </div>
+        <div className="pharmacy-section-card" aria-hidden="true" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div className="inventory-summary-grid">
+            {[1, 2, 3, 4].map((idx) => (
+              <div key={idx} className="skeleton-shimmer" style={{ height: '62px', borderRadius: 'var(--radius-md)' }} />
+            ))}
+          </div>
+          <div className="skeleton-shimmer" style={{ height: '84px', borderRadius: 'var(--radius-lg)' }} />
+          <div className="skeleton-shimmer" style={{ height: '120px', borderRadius: 'var(--radius-lg)' }} />
+        </div>
       </div>
     );
   }
@@ -316,14 +356,7 @@ export const PharmacyInventoryPage: React.FC = () => {
 
       {/* Main Content */}
       <section
-        className="card"
-        style={{
-          backgroundColor: 'var(--color-surface-panel)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--radius-xl)',
-          padding: '22px',
-          boxShadow: 'var(--shadow-sm)',
-        }}
+        className="card pharmacy-section-card"
         aria-label="Pharmacy inventory management"
       >
         {currentStatus !== 'verified' ? (

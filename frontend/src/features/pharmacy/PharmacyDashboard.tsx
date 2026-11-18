@@ -98,15 +98,31 @@ export const PharmacyDashboard: React.FC = () => {
     if (showRefreshingIndicator) setIsRefreshing(true);
     setError(null);
     try {
-      const [appRes, profileRes] = await Promise.all([
-        getPharmacyApplication().catch(() => null),
-        getPharmacyProfile().catch(() => null),
+      const [appResult, profileResult] = await Promise.allSettled([
+        getPharmacyApplication(),
+        getPharmacyProfile(),
       ]);
-      setApplication(appRes);
-      setPharmacy(profileRes);
-      syncFirstApprovalNotice(appRes, profileRes);
-    } catch {
-      setError('Could not retrieve pharmacy verification status from server.');
+      const appRes = appResult.status === 'fulfilled' ? appResult.value : null;
+      const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : null;
+
+      if (appResult.status === 'rejected' && profileResult.status === 'rejected') {
+        const reason = profileResult.reason || appResult.reason;
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : 'Could not retrieve pharmacy verification status from server.'
+        );
+      } else {
+        setApplication(appRes);
+        setPharmacy(profileRes);
+        syncFirstApprovalNotice(appRes, profileRes);
+      }
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not retrieve pharmacy verification status from server.'
+      );
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -115,17 +131,25 @@ export const PharmacyDashboard: React.FC = () => {
 
   useEffect(() => {
     let isMounted = true;
-    Promise.all([
-      getPharmacyApplication().catch(() => null),
-      getPharmacyProfile().catch(() => null),
-    ])
-      .then(([appRes, profileRes]) => {
-        if (isMounted) {
+    Promise.allSettled([getPharmacyApplication(), getPharmacyProfile()])
+      .then(([appResult, profileResult]) => {
+        if (!isMounted) return;
+        const appRes = appResult.status === 'fulfilled' ? appResult.value : null;
+        const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : null;
+
+        if (appResult.status === 'rejected' && profileResult.status === 'rejected') {
+          const reason = profileResult.reason || appResult.reason;
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : 'Could not retrieve pharmacy verification status from server.'
+          );
+        } else {
           setApplication(appRes);
           setPharmacy(profileRes);
           syncFirstApprovalNotice(appRes, profileRes);
-          setIsLoading(false);
         }
+        setIsLoading(false);
       })
       .catch(() => {
         if (isMounted) {
@@ -202,6 +226,61 @@ export const PharmacyDashboard: React.FC = () => {
         <span style={{ color: 'var(--color-text-secondary)', fontSize: '15px' }}>
           Loading pharmacy workspace...
         </span>
+      </div>
+    );
+  }
+
+  // Case 0: Initial load failed with server/network error (do not falsely show empty state)
+  if (error && !application && !pharmacy) {
+    return (
+      <div style={{ maxWidth: '640px', margin: '48px auto', padding: '0 16px' }}>
+        <div
+          role="alert"
+          className="pharmacy-section-card"
+          style={{
+            borderColor: 'var(--color-status-problem-border)',
+            backgroundColor: 'var(--color-status-problem-bg)',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '14px',
+            padding: '32px 24px',
+          }}
+        >
+          <AlertTriangle size={30} color="var(--color-status-problem)" aria-hidden="true" />
+          <div>
+            <h1 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-status-problem)', margin: '0 0 6px' }}>
+              Could Not Load Pharmacy Workspace
+            </h1>
+            <p style={{ margin: 0, fontSize: '14px', color: 'var(--color-text-primary)', lineHeight: 1.5 }}>
+              {error}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchStatus(true)}
+            disabled={isRefreshing}
+            className="btn-primary"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '10px 18px',
+              minHeight: '44px',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '14px',
+              cursor: isRefreshing ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <RefreshCw
+              size={15}
+              aria-hidden="true"
+              style={{ animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none' }}
+            />
+            <span>{isRefreshing ? 'Retrying...' : 'Retry'}</span>
+          </button>
+        </div>
       </div>
     );
   }
@@ -1089,14 +1168,7 @@ export const PharmacyDashboard: React.FC = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
         {/* SECTION 1: MEDICINE INVENTORY WORKBENCH */}
         <section
-          className="card"
-          style={{
-            backgroundColor: 'var(--color-surface-panel)',
-            border: '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-xl)',
-            padding: '24px',
-            boxShadow: 'var(--shadow-sm)',
-          }}
+          className="card pharmacy-section-card"
           aria-labelledby="inventory-section-heading"
         >
           <div
@@ -1203,7 +1275,7 @@ export const PharmacyDashboard: React.FC = () => {
                       ✓ Inventory Operations Unlocked
                     </strong>
                     <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: 0 }}>
-                      Select a status pill below for any medicine to report updated availability to patients in real-time.
+                      Select a status below for any medicine to save an updated pharmacy-reported availability status and timestamp.
                     </p>
                   </div>
 
@@ -1266,14 +1338,7 @@ export const PharmacyDashboard: React.FC = () => {
 
         {/* SECTION 2: PHARMACY PROFILE & SCHEDULE OVERVIEW */}
         <section
-          className="card"
-          style={{
-            backgroundColor: 'var(--color-surface-panel)',
-            border: '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-xl)',
-            padding: '24px',
-            boxShadow: 'var(--shadow-sm)',
-          }}
+          className="card pharmacy-section-card"
           aria-labelledby="profile-overview-heading"
         >
           <div
@@ -1317,13 +1382,7 @@ export const PharmacyDashboard: React.FC = () => {
             </Link>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-              gap: '18px',
-            }}
-          >
+          <div className="pharmacy-grid-2">
             {/* Contact Person */}
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
               <Building2 size={18} color="var(--color-action-primary)" style={{ marginTop: '2px', flexShrink: 0 }} aria-hidden="true" />

@@ -61,6 +61,95 @@ export class PharmacyServiceError extends Error {
   }
 }
 
+function mapAxiosPharmacyError(err: unknown, fallbackMessage: string): PharmacyServiceError {
+  if (err instanceof PharmacyServiceError) return err;
+
+  if (axios.isAxiosError(err)) {
+    const httpStatus = err.response?.status;
+    const errorPayload = err.response?.data?.error;
+    const serverMessage =
+      typeof errorPayload?.message === 'string' && errorPayload.message.trim()
+        ? errorPayload.message.trim()
+        : undefined;
+    const code = typeof errorPayload?.code === 'string' ? errorPayload.code : undefined;
+    const fields =
+      errorPayload?.fields && typeof errorPayload.fields === 'object'
+        ? (errorPayload.fields as Record<string, string>)
+        : undefined;
+
+    if (!err.response) {
+      return new PharmacyServiceError(
+        'Could not reach the MediFind server. Check your connection and try again.',
+        'NETWORK_ERROR',
+        0
+      );
+    }
+    if (httpStatus === 401) {
+      return new PharmacyServiceError(
+        serverMessage || 'Your session has expired. Please sign in again.',
+        code || 'UNAUTHORIZED',
+        401,
+        fields
+      );
+    }
+    if (httpStatus === 403) {
+      return new PharmacyServiceError(
+        serverMessage ||
+          'You do not have permission to view or modify this pharmacy record.',
+        code || 'FORBIDDEN',
+        403,
+        fields
+      );
+    }
+    if (httpStatus === 404) {
+      return new PharmacyServiceError(
+        serverMessage || 'The requested pharmacy record could not be found.',
+        code || 'NOT_FOUND',
+        404,
+        fields
+      );
+    }
+    if (httpStatus === 409) {
+      return new PharmacyServiceError(
+        serverMessage ||
+          'This pharmacy record was updated elsewhere or conflicts with existing data. Refresh and try again.',
+        code || 'CONFLICT',
+        409,
+        fields
+      );
+    }
+    if (httpStatus === 400 || httpStatus === 422) {
+      return new PharmacyServiceError(
+        serverMessage || 'Please review the highlighted fields and try again.',
+        code || 'VALIDATION_ERROR',
+        httpStatus,
+        fields
+      );
+    }
+    if (httpStatus === 429) {
+      return new PharmacyServiceError(
+        serverMessage || 'Too many requests in a short period. Please wait a moment and try again.',
+        code || 'RATE_LIMITED',
+        429,
+        fields
+      );
+    }
+
+    return new PharmacyServiceError(
+      serverMessage || fallbackMessage,
+      code || 'SERVER_ERROR',
+      httpStatus,
+      fields
+    );
+  }
+
+  if (err instanceof Error) {
+    return new PharmacyServiceError(err.message);
+  }
+
+  return new PharmacyServiceError(fallbackMessage);
+}
+
 /**
  * Validates that an object conforms to PharmacyApplicationResponse.
  * Protects against HTML strings returned by SPA fallback when APIs are offline.
@@ -261,16 +350,7 @@ export async function submitPharmacyApplication(
     }
     return response.data;
   } catch (err: unknown) {
-    if (axios.isAxiosError(err) && err.response?.data?.error) {
-      const errorData = err.response.data.error;
-      throw new PharmacyServiceError(
-        errorData.message || 'Submission failed',
-        errorData.code,
-        err.response.status,
-        errorData.fields
-      );
-    }
-    throw err;
+    throw mapAxiosPharmacyError(err, 'Failed to submit pharmacy application. Please try again.');
   }
 }
 
@@ -303,7 +383,7 @@ export async function getPharmacyApplication(): Promise<PharmacyApplicationRespo
     if (axios.isAxiosError(err) && err.response?.status === 404) {
       return null;
     }
-    return null;
+    throw mapAxiosPharmacyError(err, 'Could not load pharmacy application status from server.');
   }
 }
 
@@ -363,7 +443,7 @@ export async function getPharmacyProfile(): Promise<Pharmacy | null> {
     if (axios.isAxiosError(err) && err.response?.status === 404) {
       return null;
     }
-    return null;
+    throw mapAxiosPharmacyError(err, 'Could not load pharmacy profile from server.');
   }
 }
 
@@ -556,16 +636,7 @@ export async function updatePharmacyProfile(
     }
     return updated;
   } catch (err: unknown) {
-    if (axios.isAxiosError(err) && err.response?.data?.error) {
-      const errorData = err.response.data.error;
-      throw new PharmacyServiceError(
-        errorData.message || 'Failed to update pharmacy profile.',
-        errorData.code,
-        err.response.status,
-        errorData.fields
-      );
-    }
-    throw err;
+    throw mapAxiosPharmacyError(err, 'Failed to update pharmacy profile. Please try again.');
   }
 }
 
@@ -660,16 +731,7 @@ export async function deletePharmacyApplication(applicationId?: string): Promise
       : '/owner/pharmacy-application';
     await api.delete(endpoint);
   } catch (err: unknown) {
-    if (axios.isAxiosError(err) && err.response?.data?.error) {
-      const errorData = err.response.data.error;
-      throw new PharmacyServiceError(
-        errorData.message || 'Failed to delete pharmacy application.',
-        errorData.code,
-        err.response.status,
-        errorData.fields
-      );
-    }
-    throw err;
+    throw mapAxiosPharmacyError(err, 'Failed to delete pharmacy application. Please try again.');
   }
 }
 

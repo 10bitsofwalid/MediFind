@@ -136,13 +136,14 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
               alignItems: 'center',
               gap: '6px',
               fontSize: '12px',
-              padding: '6px 12px',
+              fontWeight: 600,
+              padding: '8px 12px',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border-default)',
               backgroundColor: 'var(--color-surface-panel)',
               color: 'var(--color-action-primary)',
               cursor: disabled ? 'not-allowed' : 'pointer',
-              minHeight: '36px',
+              minHeight: '40px',
             }}
           >
             <Copy size={13} aria-hidden="true" />
@@ -159,13 +160,14 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
               alignItems: 'center',
               gap: '6px',
               fontSize: '12px',
-              padding: '6px 12px',
+              fontWeight: 600,
+              padding: '8px 12px',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border-default)',
               backgroundColor: 'var(--color-surface-panel)',
               color: 'var(--color-action-primary)',
               cursor: disabled ? 'not-allowed' : 'pointer',
-              minHeight: '36px',
+              minHeight: '40px',
             }}
           >
             <Sparkles size={13} aria-hidden="true" />
@@ -179,13 +181,14 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
             className="btn-secondary"
             style={{
               fontSize: '12px',
-              padding: '6px 12px',
+              fontWeight: 600,
+              padding: '8px 12px',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border-default)',
               backgroundColor: 'var(--color-surface-panel)',
               color: 'var(--color-text-secondary)',
               cursor: disabled ? 'not-allowed' : 'pointer',
-              minHeight: '36px',
+              minHeight: '40px',
             }}
           >
             Standard Hours
@@ -244,6 +247,7 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     color: schedule.isOpen ? 'var(--color-status-available)' : 'var(--color-text-secondary)',
                     fontWeight: 500,
+                    minHeight: '34px',
                   }}
                 >
                   <input
@@ -251,7 +255,7 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
                     checked={schedule.isOpen}
                     disabled={disabled}
                     onChange={(e) => handleDayChange(key, { isOpen: e.target.checked })}
-                    style={{ width: '16px', height: '16px', accentColor: 'var(--color-action-primary)' }}
+                    style={{ width: '17px', height: '17px', accentColor: 'var(--color-action-primary)' }}
                   />
                   <span>{schedule.isOpen ? 'Open' : 'Closed'}</span>
                 </label>
@@ -271,11 +275,12 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '4px',
+                      gap: '6px',
                       fontSize: '12px',
                       color: 'var(--color-text-secondary)',
                       marginRight: '8px',
                       cursor: disabled ? 'not-allowed' : 'pointer',
+                      minHeight: '36px',
                     }}
                   >
                     <input
@@ -289,14 +294,14 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
                           closeTime: e.target.checked ? '23:59' : '22:30',
                         })
                       }
-                      style={{ width: '15px', height: '15px', accentColor: 'var(--color-action-primary)' }}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--color-action-primary)' }}
                     />
                     <span>24 Hours</span>
                   </label>
 
                   {!schedule.is24Hours ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>From:</span>
                         <input
                           type="time"
@@ -304,18 +309,18 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
                           disabled={disabled}
                           onChange={(e) => handleDayChange(key, { openTime: e.target.value })}
                           aria-label={`${label} opening time`}
+                          aria-invalid={Boolean(isInvalidTime)}
+                          className={`medifind-input${isInvalidTime ? ' is-invalid' : ''}`}
                           style={{
-                            padding: '6px 8px',
+                            width: 'auto',
+                            padding: '6px 10px',
                             fontSize: '13px',
-                            borderRadius: 'var(--radius-sm)',
-                            border: '1px solid var(--color-border-default)',
-                            backgroundColor: 'var(--color-surface-panel)',
-                            minHeight: '38px',
+                            minHeight: '42px',
                           }}
                         />
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>To:</span>
                         <input
                           type="time"
@@ -323,21 +328,21 @@ export const OpeningHoursBuilder: React.FC<OpeningHoursBuilderProps> = ({
                           disabled={disabled}
                           onChange={(e) => handleDayChange(key, { closeTime: e.target.value })}
                           aria-label={`${label} closing time`}
+                          aria-invalid={Boolean(isInvalidTime)}
+                          aria-describedby={isInvalidTime ? `hours-error-${key}` : undefined}
+                          className={`medifind-input${isInvalidTime ? ' is-invalid' : ''}`}
                           style={{
-                            padding: '6px 8px',
+                            width: 'auto',
+                            padding: '6px 10px',
                             fontSize: '13px',
-                            borderRadius: 'var(--radius-sm)',
-                            border: isInvalidTime
-                              ? '1px solid var(--color-status-problem)'
-                              : '1px solid var(--color-border-default)',
-                            backgroundColor: 'var(--color-surface-panel)',
-                            minHeight: '38px',
+                            minHeight: '42px',
                           }}
                         />
                       </div>
 
                       {isInvalidTime && (
                         <div
+                          id={`hours-error-${key}`}
                           role="alert"
                           style={{
                             display: 'flex',

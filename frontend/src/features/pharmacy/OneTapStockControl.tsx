@@ -42,6 +42,7 @@ import {
   Table2,
   Clock,
   History,
+  HelpCircle,
 } from 'lucide-react';
 
 interface OneTapStockControlProps {
@@ -85,6 +86,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
 }) => {
   const [inventory, setInventory] = useState<StockInventoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -120,20 +122,30 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
   }>({ isOpen: false, mode: 'add', item: null });
   const [historyItem, setHistoryItem] = useState<StockInventoryRecord | null>(null);
 
-  const fetchInventory = useCallback(async () => {
-    setIsLoading(true);
+  const fetchInventory = useCallback(async (preserveVisibleList = false) => {
+    if (preserveVisibleList) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
     setLoadError(null);
+    setActionErrorMessage(null);
     try {
       const items = await stockService.getInventory(pharmacyId);
       setInventory(items);
     } catch (err: unknown) {
-      setLoadError(
+      const message =
         err instanceof Error
           ? err.message
-          : 'Unable to load pharmacy inventory. Please try again.'
-      );
+          : 'Unable to load pharmacy inventory. Please try again.';
+      if (preserveVisibleList) {
+        setActionErrorMessage(message);
+      } else {
+        setLoadError(message);
+      }
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   }, [pharmacyId]);
 
@@ -684,26 +696,26 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
               display: 'flex',
               flexDirection: 'column',
               gap: '4px',
-              padding: '6px 8px',
+              padding: '8px 10px',
               borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--color-status-danger-border)',
-              backgroundColor: 'var(--color-status-danger-bg)',
-              color: 'var(--color-status-danger)',
+              border: '1px solid var(--color-status-problem-border)',
+              backgroundColor: 'var(--color-status-problem-bg)',
+              color: 'var(--color-status-problem)',
               fontSize: '11px',
             }}
           >
             <span style={{ fontWeight: 600 }}>{rowError.message}</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               {rowError.isConflict ? (
                 <button
                   type="button"
-                  onClick={() => void fetchInventory()}
+                  onClick={() => void fetchInventory(inventory.length > 0)}
                   style={{
                     background: 'none',
                     border: 'none',
-                    padding: 0,
+                    padding: '4px 0',
                     color: 'var(--color-action-primary)',
-                    fontSize: '11px',
+                    fontSize: '12px',
                     fontWeight: 600,
                     cursor: 'pointer',
                     textDecoration: 'underline',
@@ -719,9 +731,9 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                     style={{
                       background: 'none',
                       border: 'none',
-                      padding: 0,
+                      padding: '4px 0',
                       color: 'var(--color-action-primary)',
-                      fontSize: '11px',
+                      fontSize: '12px',
                       fontWeight: 600,
                       cursor: 'pointer',
                       textDecoration: 'underline',
@@ -737,9 +749,9 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                 style={{
                   background: 'none',
                   border: 'none',
-                  padding: 0,
+                  padding: '4px 0',
                   color: 'var(--color-text-secondary)',
-                  fontSize: '11px',
+                  fontSize: '12px',
                   cursor: 'pointer',
                 }}
               >
@@ -872,7 +884,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
           gap: '12px',
         }}
       >
-        <div style={{ flex: 1, minWidth: '220px' }}>
+        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
           {pharmacyName && (
             <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '4px' }}>
               Active Pharmacy: {pharmacyName}
@@ -892,7 +904,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
               gap: '6px',
               fontSize: '13px',
               padding: '10px 16px',
-              minHeight: '42px',
+              minHeight: '44px',
               borderRadius: 'var(--radius-md)',
               cursor: 'pointer',
             }}
@@ -903,120 +915,170 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
 
           <button
             type="button"
-            onClick={fetchInventory}
-            disabled={isLoading}
+            onClick={() => void fetchInventory(inventory.length > 0)}
+            disabled={isLoading || isRefreshing}
             className="btn-secondary"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
               fontSize: '13px',
+              fontWeight: 600,
               padding: '10px 14px',
-              minHeight: '42px',
+              minHeight: '44px',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border-default)',
               backgroundColor: 'var(--color-surface-panel)',
               color: 'var(--color-text-secondary)',
-              cursor: isLoading ? 'not-allowed' : 'pointer',
+              cursor: isLoading || isRefreshing ? 'not-allowed' : 'pointer',
             }}
             aria-label="Refresh medicine inventory"
           >
             <RefreshCw
               size={14}
               aria-hidden={true}
-              style={{ animation: isLoading ? 'spin 0.8s linear infinite' : 'none' }}
+              style={{ animation: isLoading || isRefreshing ? 'spin 0.8s linear infinite' : 'none' }}
             />
-            <span>Refresh</span>
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
         </div>
       </div>
 
-      {/* Truthful Inventory Summary Strip */}
+      {/* Truthful Interactive Inventory Summary Strip */}
       {!isLoading && !loadError && inventory.length > 0 && (
-        <div className="inventory-summary-grid" aria-label="Inventory summary counts">
-          <div
+        <div className="inventory-summary-grid" role="group" aria-label="Inventory summary filters">
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter('all');
+              setFreshnessFilter('all');
+            }}
+            aria-pressed={statusFilter === 'all' && freshnessFilter === 'all'}
+            className="inventory-summary-card"
             style={{
-              padding: '10px 12px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border-default)',
+              border:
+                statusFilter === 'all' && freshnessFilter === 'all'
+                  ? '2px solid var(--color-action-primary)'
+                  : '1px solid var(--color-border-default)',
               backgroundColor: 'var(--color-surface-panel)',
             }}
           >
-            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
-              Total Listed
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+              <Pill size={12} aria-hidden="true" />
+              <span>Total Listed</span>
             </div>
             <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
               {summary.total}
             </div>
-          </div>
+          </button>
 
-          <div
+          <button
+            type="button"
+            onClick={() => setStatusFilter((prev) => (prev === 'available' ? 'all' : 'available'))}
+            aria-pressed={statusFilter === 'available'}
+            className="inventory-summary-card"
             style={{
-              padding: '10px 12px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid rgba(24, 115, 75, 0.25)',
+              border:
+                statusFilter === 'available'
+                  ? '2px solid var(--color-status-available)'
+                  : '1px solid var(--color-status-available-border)',
               backgroundColor: 'var(--color-status-available-bg)',
             }}
           >
-            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-status-available)' }}>
-              Available
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: 'var(--color-status-available)' }}>
+              <CheckCircle2 size={12} aria-hidden="true" />
+              <span>Available</span>
             </div>
             <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-status-available)' }}>
               {summary.available}
             </div>
-          </div>
+          </button>
 
-          <div
+          <button
+            type="button"
+            onClick={() => setStatusFilter((prev) => (prev === 'low' ? 'all' : 'low'))}
+            aria-pressed={statusFilter === 'low'}
+            className="inventory-summary-card"
             style={{
-              padding: '10px 12px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid rgba(152, 88, 0, 0.25)',
+              border:
+                statusFilter === 'low'
+                  ? '2px solid var(--color-status-caution)'
+                  : '1px solid var(--color-status-caution-border)',
               backgroundColor: 'var(--color-status-caution-bg)',
             }}
           >
-            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-status-caution)' }}>
-              Low Stock
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: 'var(--color-status-caution)' }}>
+              <AlertTriangle size={12} aria-hidden="true" />
+              <span>Low Stock</span>
             </div>
             <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-status-caution)' }}>
               {summary.low}
             </div>
-          </div>
+          </button>
 
-          <div
+          <button
+            type="button"
+            onClick={() => setStatusFilter((prev) => (prev === 'out' ? 'all' : 'out'))}
+            aria-pressed={statusFilter === 'out'}
+            className="inventory-summary-card"
             style={{
-              padding: '10px 12px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid rgba(180, 35, 47, 0.25)',
+              border:
+                statusFilter === 'out'
+                  ? '2px solid var(--color-status-problem)'
+                  : '1px solid var(--color-status-problem-border)',
               backgroundColor: 'var(--color-status-problem-bg)',
             }}
           >
-            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-status-problem)' }}>
-              Out of Stock
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: 'var(--color-status-problem)' }}>
+              <XCircle size={12} aria-hidden="true" />
+              <span>Out of Stock</span>
             </div>
             <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-status-problem)' }}>
               {summary.out}
             </div>
-          </div>
+          </button>
+
+          {summary.unverified > 0 && (
+            <button
+              type="button"
+              onClick={() => setStatusFilter((prev) => (prev === 'unverified' ? 'all' : 'unverified'))}
+              aria-pressed={statusFilter === 'unverified'}
+              className="inventory-summary-card"
+              style={{
+                border:
+                  statusFilter === 'unverified'
+                    ? '2px solid var(--color-status-neutral)'
+                    : '1px solid var(--color-border-default)',
+                backgroundColor: 'var(--color-status-neutral-bg)',
+              }}
+            >
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: 'var(--color-status-neutral)' }}>
+                <HelpCircle size={12} aria-hidden="true" />
+                <span>Unverified</span>
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-status-neutral)' }}>
+                {summary.unverified}
+              </div>
+            </button>
+          )}
 
           {summary.stale > 0 && (
             <button
               type="button"
               onClick={() => setFreshnessFilter((prev) => (prev === 'stale' ? 'all' : 'stale'))}
               aria-pressed={freshnessFilter === 'stale'}
+              className="inventory-summary-card"
               style={{
-                textAlign: 'left',
-                padding: '10px 12px',
-                borderRadius: 'var(--radius-md)',
                 border:
                   freshnessFilter === 'stale'
                     ? '2px solid var(--color-status-caution)'
-                    : '1px solid rgba(152, 88, 0, 0.3)',
+                    : '1px solid var(--color-status-caution-border)',
                 backgroundColor: 'var(--color-status-caution-bg)',
-                cursor: 'pointer',
               }}
             >
-              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-status-caution)' }}>
-                Stale (&ge; 24h)
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: 'var(--color-status-caution)' }}>
+                <Clock size={12} aria-hidden="true" />
+                <span>Stale (&ge; 24h)</span>
               </div>
               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-status-caution)' }}>
                 {summary.stale}
@@ -1056,15 +1118,9 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Medicine name, generic name, or strength..."
+                className="medifind-input"
                 style={{
-                  width: '100%',
-                  minHeight: '42px',
-                  padding: '9px 36px 9px 36px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border-default)',
-                  backgroundColor: 'var(--color-surface-panel)',
-                  color: 'var(--color-text-primary)',
-                  fontSize: '14px',
+                  padding: '9px 40px 9px 36px',
                 }}
               />
               {searchQuery && (
@@ -1074,10 +1130,10 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                   aria-label="Clear inventory search"
                   style={{
                     position: 'absolute',
-                    right: '6px',
-                    top: '6px',
-                    width: '30px',
-                    height: '30px',
+                    right: '4px',
+                    top: '4px',
+                    width: '36px',
+                    height: '36px',
                     borderRadius: 'var(--radius-full)',
                     border: 'none',
                     backgroundColor: 'transparent',
@@ -1088,7 +1144,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                     cursor: 'pointer',
                   }}
                 >
-                  <X size={14} aria-hidden="true" />
+                  <X size={15} aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -1112,16 +1168,8 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
               id="inventory-status-filter"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as InventoryStatusFilter)}
-              style={{
-                width: '100%',
-                minHeight: '42px',
-                padding: '9px 12px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border-default)',
-                backgroundColor: 'var(--color-surface-panel)',
-                color: 'var(--color-text-primary)',
-                fontSize: '13px',
-              }}
+              className="medifind-select"
+              style={{ fontSize: '13px', padding: '9px 12px' }}
             >
               <option value="all">All statuses</option>
               <option value="available">Available</option>
@@ -1149,16 +1197,8 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
               id="inventory-freshness-filter"
               value={freshnessFilter}
               onChange={(e) => setFreshnessFilter(e.target.value as InventoryFreshnessFilter)}
-              style={{
-                width: '100%',
-                minHeight: '42px',
-                padding: '9px 12px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border-default)',
-                backgroundColor: 'var(--color-surface-panel)',
-                color: 'var(--color-text-primary)',
-                fontSize: '13px',
-              }}
+              className="medifind-select"
+              style={{ fontSize: '13px', padding: '9px 12px' }}
             >
               <option value="all">All updates</option>
               <option value="fresh">Fresh (&lt; 24h)</option>
@@ -1184,16 +1224,8 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
               id="inventory-sort-select"
               value={sortOption}
               onChange={(e) => setSortOption(e.target.value as InventorySortOption)}
-              style={{
-                width: '100%',
-                minHeight: '42px',
-                padding: '9px 12px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border-default)',
-                backgroundColor: 'var(--color-surface-panel)',
-                color: 'var(--color-text-primary)',
-                fontSize: '13px',
-              }}
+              className="medifind-select"
+              style={{ fontSize: '13px', padding: '9px 12px' }}
             >
               <option value="updated_desc">Recently updated</option>
               <option value="oldest_first">Oldest / stale first</option>
@@ -1405,11 +1437,16 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
               border: 'none',
               color: 'var(--color-status-available)',
               cursor: 'pointer',
-              padding: '4px',
+              minWidth: '36px',
+              minHeight: '36px',
+              borderRadius: 'var(--radius-full)',
               display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
-            <X size={14} aria-hidden="true" />
+            <X size={15} aria-hidden="true" />
           </button>
         </div>
       )}
@@ -1423,7 +1460,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
             borderRadius: 'var(--radius-md)',
             backgroundColor: 'var(--color-status-problem-bg)',
             color: 'var(--color-status-problem)',
-            border: '1px solid rgba(180, 35, 47, 0.3)',
+            border: '1px solid var(--color-status-problem-border)',
             fontSize: '13px',
             fontWeight: 500,
             display: 'flex',
@@ -1445,31 +1482,64 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
               border: 'none',
               color: 'var(--color-status-problem)',
               cursor: 'pointer',
-              padding: '4px',
+              minWidth: '36px',
+              minHeight: '36px',
+              borderRadius: 'var(--radius-full)',
               display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
-            <X size={14} aria-hidden="true" />
+            <X size={15} aria-hidden="true" />
           </button>
         </div>
       )}
 
-      {/* Main Content States: Loading / Error / Empty / No Match / Results */}
+      {/* Main Content States: Loading Skeleton / Error / Empty / No Match / Results */}
       {isLoading ? (
         <div
           role="status"
           aria-live="polite"
-          style={{
-            textAlign: 'center',
-            padding: '44px 16px',
-            color: 'var(--color-text-secondary)',
-            fontSize: '14px',
-            border: '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-lg)',
-          }}
+          aria-busy="true"
+          style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
         >
-          <div className="spinner" style={{ margin: '0 auto 12px' }} aria-hidden="true" />
-          <span>Loading medicine inventory...</span>
+          <span className="sr-only">Loading medicine inventory...</span>
+          <div className="inventory-summary-grid" aria-hidden="true">
+            {[1, 2, 3, 4].map((idx) => (
+              <div
+                key={idx}
+                className="skeleton-shimmer"
+                style={{ height: '62px', borderRadius: 'var(--radius-md)' }}
+              />
+            ))}
+          </div>
+          {[1, 2, 3].map((rowIdx) => (
+            <div
+              key={rowIdx}
+              aria-hidden="true"
+              style={{
+                padding: '16px',
+                borderRadius: 'var(--radius-lg)',
+                border: '1px solid var(--color-border-default)',
+                backgroundColor: 'var(--color-surface-panel)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                <div className="skeleton-shimmer" style={{ width: '210px', maxWidth: '100%', height: '20px' }} />
+                <div className="skeleton-shimmer" style={{ width: '120px', height: '24px', borderRadius: 'var(--radius-full)' }} />
+              </div>
+              <div className="skeleton-shimmer" style={{ width: '280px', maxWidth: '100%', height: '14px' }} />
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div className="skeleton-shimmer" style={{ width: '92px', height: '38px', borderRadius: 'var(--radius-full)' }} />
+                <div className="skeleton-shimmer" style={{ width: '76px', height: '38px', borderRadius: 'var(--radius-full)' }} />
+                <div className="skeleton-shimmer" style={{ width: '112px', height: '38px', borderRadius: 'var(--radius-full)' }} />
+              </div>
+            </div>
+          ))}
         </div>
       ) : loadError ? (
         <div
@@ -1478,7 +1548,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
             padding: '28px 20px',
             borderRadius: 'var(--radius-lg)',
             backgroundColor: 'var(--color-status-problem-bg)',
-            border: '1px solid rgba(180, 35, 47, 0.3)',
+            border: '1px solid var(--color-status-problem-border)',
             textAlign: 'center',
             display: 'flex',
             flexDirection: 'column',
@@ -1495,15 +1565,16 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
           </div>
           <button
             type="button"
-            onClick={fetchInventory}
+            onClick={() => void fetchInventory(false)}
             className="btn-secondary"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '9px 16px',
+              padding: '10px 16px',
+              minHeight: '44px',
               borderRadius: 'var(--radius-md)',
-              border: '1px solid rgba(180, 35, 47, 0.35)',
+              border: '1px solid var(--color-status-problem-border)',
               backgroundColor: 'var(--color-surface-panel)',
               color: 'var(--color-status-problem)',
               fontSize: '13px',
@@ -1548,7 +1619,7 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                   gap: '6px',
                   fontSize: '13px',
                   padding: '10px 18px',
-                  minHeight: '42px',
+                  minHeight: '44px',
                   borderRadius: 'var(--radius-md)',
                   cursor: 'pointer',
                 }}
@@ -1571,7 +1642,8 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                   onClick={clearAllFilters}
                   className="btn-secondary"
                   style={{
-                    padding: '8px 14px',
+                    padding: '10px 16px',
+                    minHeight: '44px',
                     borderRadius: 'var(--radius-md)',
                     border: '1px solid var(--color-border-default)',
                     backgroundColor: 'var(--color-surface-panel)',
@@ -1589,8 +1661,13 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
         </div>
       ) : (
         <>
-          {/* Desktop Table View */}
-          <div className="inventory-table-wrap">
+          {/* Desktop Table View (Labeled Keyboard-Scrollable Region) */}
+          <div
+            className="inventory-table-wrap"
+            role="region"
+            aria-label="Pharmacy medicine inventory table"
+            tabIndex={0}
+          >
             <table className="inventory-table" aria-label="Pharmacy medicine inventory">
               <thead>
                 <tr>

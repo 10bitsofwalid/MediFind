@@ -55,7 +55,27 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
   const [isDetecting, setIsDetecting] = useState<boolean>(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [geoSuccess, setGeoSuccess] = useState<boolean>(false);
+  const [latDraft, setLatDraft] = useState<string>(() => (Number.isNaN(latitude) ? '' : String(latitude)));
+  const [lngDraft, setLngDraft] = useState<string>(() => (Number.isNaN(longitude) ? '' : String(longitude)));
   const markerRef = useRef<L.Marker>(null);
+
+  // Sync draft text when coordinates update from map click, drag, GPS, or presets
+  const parsedDraftLat = latDraft.trim() === '' ? Number.NaN : Number(latDraft);
+  const parsedDraftLng = lngDraft.trim() === '' ? Number.NaN : Number(lngDraft);
+  const displayedLat =
+    !Number.isNaN(latitude) && parsedDraftLat !== latitude && !(latDraft.trim() === '' && Number.isNaN(latitude))
+      ? String(latitude)
+      : latDraft;
+  const displayedLng =
+    !Number.isNaN(longitude) && parsedDraftLng !== longitude && !(lngDraft.trim() === '' && Number.isNaN(longitude))
+      ? String(longitude)
+      : lngDraft;
+
+  const updateCoordinates = (nextLat: number, nextLng: number) => {
+    setLatDraft(Number.isNaN(nextLat) ? '' : String(nextLat));
+    setLngDraft(Number.isNaN(nextLng) ? '' : String(nextLng));
+    onChange(nextLat, nextLng);
+  };
 
   // Safely construct custom SVG pin icon inside useMemo to avoid top-level evaluation issues
   const pinIcon = useMemo(() => {
@@ -104,7 +124,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
     const marker = markerRef.current;
     if (marker) {
       const latLng = marker.getLatLng();
-      onChange(
+      updateCoordinates(
         parseFloat(latLng.lat.toFixed(6)),
         parseFloat(latLng.lng.toFixed(6))
       );
@@ -126,7 +146,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         setIsDetecting(false);
         const lat = parseFloat(pos.coords.latitude.toFixed(6));
         const lng = parseFloat(pos.coords.longitude.toFixed(6));
-        onChange(lat, lng);
+        updateCoordinates(lat, lng);
         setGeoSuccess(true);
         setTimeout(() => setGeoSuccess(false), 3500);
       },
@@ -252,26 +272,41 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
           Quick Jump:
         </span>
-        {PRESET_LOCATIONS.map((preset) => (
-          <button
-            key={preset.name}
-            type="button"
-            onClick={() => onChange(preset.lat, preset.lng)}
-            disabled={disabled}
-            style={{
-              padding: '4px 10px',
-              fontSize: '12px',
-              borderRadius: 'var(--radius-full)',
-              border: '1px solid var(--color-border-default)',
-              backgroundColor: 'var(--color-surface-canvas)',
-              color: 'var(--color-text-secondary)',
-              cursor: disabled ? 'not-allowed' : 'pointer',
-              minHeight: '32px',
-            }}
-          >
-            {preset.name}
-          </button>
-        ))}
+        {PRESET_LOCATIONS.map((preset) => {
+          const isSelected =
+            isValidLat &&
+            isValidLng &&
+            Math.abs(latitude - preset.lat) < 0.0001 &&
+            Math.abs(longitude - preset.lng) < 0.0001;
+          return (
+            <button
+              key={preset.name}
+              type="button"
+              onClick={() => updateCoordinates(preset.lat, preset.lng)}
+              disabled={disabled}
+              aria-pressed={isSelected}
+              style={{
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: isSelected ? 600 : 500,
+                borderRadius: 'var(--radius-full)',
+                border: isSelected
+                  ? '1px solid var(--color-action-primary)'
+                  : '1px solid var(--color-border-default)',
+                backgroundColor: isSelected
+                  ? 'var(--color-action-subtle)'
+                  : 'var(--color-surface-canvas)',
+                color: isSelected
+                  ? 'var(--color-action-primary)'
+                  : 'var(--color-text-secondary)',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                minHeight: '36px',
+              }}
+            >
+              {preset.name}
+            </button>
+          );
+        })}
       </div>
 
       {/* Interactive Leaflet Map with ErrorBoundary */}
@@ -311,7 +346,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
             <MapRecenter lat={mapCenter[0]} lng={mapCenter[1]} />
             <MapClickHandler
               onLocationSelect={(lat, lng) => {
-                if (!disabled) onChange(lat, lng);
+                if (!disabled) updateCoordinates(lat, lng);
               }}
             />
           </MapContainer>
@@ -322,7 +357,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))',
           gap: '12px',
         }}
       >
@@ -345,27 +380,19 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
             step="0.000001"
             min="-90"
             max="90"
+            inputMode="decimal"
             disabled={disabled}
-            value={isNaN(latitude) ? '' : latitude}
+            value={displayedLat}
             onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              onChange(isNaN(val) ? 0 : val, longitude);
+              const raw = e.target.value;
+              setLatDraft(raw);
+              const val = raw.trim() === '' ? Number.NaN : Number(raw);
+              onChange(val, longitude);
             }}
             placeholder="e.g. 23.810332"
-            aria-describedby="lat-help"
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              fontSize: '14px',
-              borderRadius: 'var(--radius-md)',
-              border: error
-                ? '1px solid var(--color-status-problem)'
-                : '1px solid var(--color-border-default)',
-              backgroundColor: 'var(--color-surface-panel)',
-              color: 'var(--color-text-primary)',
-              boxSizing: 'border-box',
-              minHeight: '44px',
-            }}
+            aria-invalid={Boolean(error) || !isValidLat}
+            aria-describedby={error ? 'lat-help location-picker-error' : 'lat-help'}
+            className={`medifind-input${error || !isValidLat ? ' is-invalid' : ''}`}
           />
           <span id="lat-help" style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
             Range: -90.0 to 90.0
@@ -391,27 +418,19 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
             step="0.000001"
             min="-180"
             max="180"
+            inputMode="decimal"
             disabled={disabled}
-            value={isNaN(longitude) ? '' : longitude}
+            value={displayedLng}
             onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              onChange(latitude, isNaN(val) ? 0 : val);
+              const raw = e.target.value;
+              setLngDraft(raw);
+              const val = raw.trim() === '' ? Number.NaN : Number(raw);
+              onChange(latitude, val);
             }}
             placeholder="e.g. 90.412518"
-            aria-describedby="lng-help"
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              fontSize: '14px',
-              borderRadius: 'var(--radius-md)',
-              border: error
-                ? '1px solid var(--color-status-problem)'
-                : '1px solid var(--color-border-default)',
-              backgroundColor: 'var(--color-surface-panel)',
-              color: 'var(--color-text-primary)',
-              boxSizing: 'border-box',
-              minHeight: '44px',
-            }}
+            aria-invalid={Boolean(error) || !isValidLng}
+            aria-describedby={error ? 'lng-help location-picker-error' : 'lng-help'}
+            className={`medifind-input${error || !isValidLng ? ' is-invalid' : ''}`}
           />
           <span id="lng-help" style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
             Range: -180.0 to 180.0
@@ -421,6 +440,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
 
       {error && (
         <div
+          id="location-picker-error"
           role="alert"
           style={{
             display: 'flex',

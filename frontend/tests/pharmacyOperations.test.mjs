@@ -1,6 +1,12 @@
 // frontend/tests/pharmacyOperations.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {
+  validateProfileField as validateProfileFieldImpl,
+  validateProfileFormValues,
+  validateScheduleHours,
+  getOrderedProfileErrorEntries,
+} from '../src/features/pharmacy/profileUtils.ts';
 
 /**
  * Validation logic mirroring PharmacyProfilePage & PharmacyService
@@ -402,5 +408,43 @@ test('Trust Boundary: Regulatory License credentials cannot be changed in standa
 
   assert.equal(updatedProfile.name, 'Apollo Model Pharmacy');
   assert.equal(updatedProfile.licenseNo, 'DL-DHK-99882', 'License must remain unchanged in profile patch');
+});
+
+test('Shared profileUtils: blur validation, full-form validation, and ordered error summary', () => {
+  // Single-field blur validation matches required rules
+  assert.equal(validateProfileFieldImpl('name', 'A'), 'Pharmacy name must be at least 3 characters.');
+  assert.equal(validateProfileFieldImpl('latitude', ''), 'Latitude must be between -90 and 90.');
+  assert.equal(validateProfileFieldImpl('longitude', Number.NaN), 'Longitude must be between -180 and 180.');
+  assert.equal(validateProfileFieldImpl('postalCode', ''), '');
+  assert.equal(validateProfileFieldImpl('postalCode', '1213'), '');
+
+  // Schedule validation detects inverted opening/closing hours
+  const badHours = {
+    monday: { isOpen: true, openTime: '21:00', closeTime: '09:00', is24Hours: false },
+  };
+  assert.equal(validateScheduleHours(badHours), 'Closing time must be after opening time on Monday.');
+
+  // Full-form validation & ordered error summary for accessible focus links
+  const errors = validateProfileFormValues({
+    name: '',
+    ownerName: 'Dr. Rahman',
+    phone: '123',
+    email: 'bad-email',
+    streetAddress: 'House 10',
+    area: 'Banani',
+    city: 'Dhaka',
+    postalCode: 'abc',
+    latitude: Number.NaN,
+    longitude: 90.41,
+    weeklyHours: badHours,
+  });
+
+  const ordered = getOrderedProfileErrorEntries(errors);
+  assert.deepEqual(
+    ordered.map((e) => e.field),
+    ['name', 'phone', 'email', 'postalCode', 'latitude', 'openingHours']
+  );
+  assert.equal(ordered[0].inputId, 'field-name');
+  assert.equal(ordered[ordered.length - 1].inputId, 'hours-heading');
 });
 

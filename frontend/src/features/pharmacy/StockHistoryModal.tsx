@@ -161,16 +161,10 @@ export const StockHistoryModal: React.FC<StockHistoryModalProps> = ({
       }}
     >
       <div
-        className="card"
+        className="card pharmacy-modal-panel"
         style={{
-          width: '100%',
           maxWidth: '640px',
-          backgroundColor: 'var(--color-surface-panel)',
-          borderRadius: 'var(--radius-xl)',
-          border: '1px solid var(--color-border-default)',
-          boxShadow: 'var(--shadow-lg)',
-          padding: '24px',
-          maxHeight: 'calc(100vh - 32px)',
+          overflowY: 'hidden',
           display: 'flex',
           flexDirection: 'column',
           gap: '16px',
