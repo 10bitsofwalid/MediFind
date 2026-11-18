@@ -89,15 +89,8 @@ export const StockReminderSettings: React.FC = () => {
   return (
     <section
       id="stock-reminders"
-      className="card"
+      className="card pharmacy-section-card"
       aria-labelledby="stock-reminders-heading"
-      style={{
-        backgroundColor: 'var(--color-surface-panel)',
-        border: '1px solid var(--color-border-default)',
-        borderRadius: 'var(--radius-xl)',
-        padding: '24px',
-        boxShadow: 'var(--shadow-sm)',
-      }}
     >
       <div
         style={{
@@ -134,7 +127,8 @@ export const StockReminderSettings: React.FC = () => {
             gap: '6px',
             fontSize: '12px',
             fontWeight: 600,
-            padding: '7px 12px',
+            padding: '8px 14px',
+            minHeight: '44px',
             borderRadius: 'var(--radius-md)',
             border: '1px solid var(--color-border-default)',
             backgroundColor: 'var(--color-surface-canvas)',
@@ -264,14 +258,12 @@ export const StockReminderSettings: React.FC = () => {
               type="time"
               value={newTime}
               onChange={(e) => setNewTime(e.target.value)}
+              className="medifind-input"
               style={{
+                width: 'auto',
                 padding: '8px 12px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border-default)',
-                backgroundColor: 'var(--color-surface-panel)',
-                color: 'var(--color-text-primary)',
                 fontSize: '14px',
-                minHeight: '40px',
+                minHeight: '44px',
               }}
             />
             <button
@@ -285,7 +277,7 @@ export const StockReminderSettings: React.FC = () => {
                 borderRadius: 'var(--radius-md)',
                 fontSize: '13px',
                 cursor: 'pointer',
-                minHeight: '40px',
+                minHeight: '44px',
               }}
             >
               <Plus size={14} aria-hidden="true" />
@@ -325,8 +317,8 @@ export const StockReminderSettings: React.FC = () => {
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      width: '20px',
-                      height: '20px',
+                      width: '28px',
+                      height: '28px',
                       borderRadius: '50%',
                       border: 'none',
                       backgroundColor: 'var(--color-surface-canvas)',
@@ -335,7 +327,7 @@ export const StockReminderSettings: React.FC = () => {
                       padding: 0,
                     }}
                   >
-                    <X size={12} aria-hidden="true" />
+                    <X size={13} aria-hidden="true" />
                   </button>
                 </span>
               ))}

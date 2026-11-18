@@ -23,8 +23,6 @@ export const FreshnessBadge: React.FC<FreshnessBadgeProps> = ({
 
   return (
     <span
-      role="status"
-      aria-label={`Report freshness: ${stale ? 'Stale, ' : ''}${timeAgoString}`}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -38,6 +36,7 @@ export const FreshnessBadge: React.FC<FreshnessBadgeProps> = ({
         border: stale ? '1px solid rgba(152, 88, 0, 0.3)' : 'none',
       }}
     >
+      <span className="sr-only">Freshness: </span>
       {stale ? (
         <>
           <AlertTriangle size={13} aria-hidden={true} />

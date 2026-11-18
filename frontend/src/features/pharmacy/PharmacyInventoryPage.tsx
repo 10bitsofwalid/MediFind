@@ -173,7 +173,8 @@ export const PharmacyInventoryPage: React.FC = () => {
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '9px 16px',
+              padding: '10px 16px',
+              minHeight: '44px',
               borderRadius: 'var(--radius-md)',
               border: '1px solid rgba(180, 35, 47, 0.35)',
               backgroundColor: 'var(--color-surface-panel)',
@@ -354,7 +355,7 @@ export const PharmacyInventoryPage: React.FC = () => {
               </span>
             )}
           </div>
-          <div style={{ fontSize: '14px', color: 'var(--color-text-secondary)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: '14px', color: 'var(--color-text-secondary)', display: 'flex', gap: '8px', flexWrap: 'wrap', overflowWrap: 'anywhere' }}>
             <strong style={{ color: 'var(--color-text-primary)' }}>{pharmacyName}</strong>
             <span>•</span>
             <span>License: <code>{licenseNumber}</code></span>

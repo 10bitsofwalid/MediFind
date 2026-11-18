@@ -144,7 +144,9 @@ export const AppRoutes: React.FC = () => {
           path="/pharmacy/register"
           element={
             <ProtectedRoute allowedRoles={['PHARMACY']} requireAuth={false}>
-              <PharmacyRegisterPage />
+              <ErrorBoundary fallbackTitle="Pharmacy Onboarding Error">
+                <PharmacyRegisterPage />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -152,7 +154,9 @@ export const AppRoutes: React.FC = () => {
           path="/pharmacy/dashboard"
           element={
             <ProtectedRoute allowedRoles={['PHARMACY']}>
-              <PharmacyDashboard />
+              <ErrorBoundary fallbackTitle="Pharmacy Workspace Error">
+                <PharmacyDashboard />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -160,7 +164,9 @@ export const AppRoutes: React.FC = () => {
           path="/pharmacy/inventory"
           element={
             <ProtectedRoute allowedRoles={['PHARMACY']}>
-              <PharmacyInventoryPage />
+              <ErrorBoundary fallbackTitle="Inventory Workbench Error">
+                <PharmacyInventoryPage />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -168,7 +174,9 @@ export const AppRoutes: React.FC = () => {
           path="/pharmacy/profile"
           element={
             <ProtectedRoute allowedRoles={['PHARMACY']}>
-              <PharmacyProfilePage />
+              <ErrorBoundary fallbackTitle="Pharmacy Profile Error">
+                <PharmacyProfilePage />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />

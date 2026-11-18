@@ -1,5 +1,5 @@
 // src/components/WelcomeRoleModal.tsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../app/useAuth';
 import type { Role } from '../types/pharmacy';
@@ -51,16 +51,23 @@ export const WelcomeRoleModal: React.FC = () => {
   const { user, selectedUserType, isWelcomeOpen, selectUserType, closeWelcomeModal } = useAuth();
 
   const canDismiss = Boolean(selectedUserType || user);
+  const firstRoleBtnRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    if (!isWelcomeOpen || !canDismiss) return;
+    if (!isWelcomeOpen) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    firstRoleBtnRef.current?.focus();
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && canDismiss) {
         closeWelcomeModal();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus?.();
+    };
   }, [isWelcomeOpen, canDismiss, closeWelcomeModal]);
 
   if (!isWelcomeOpen) return null;
@@ -84,6 +91,11 @@ export const WelcomeRoleModal: React.FC = () => {
       aria-modal="true"
       aria-labelledby="welcome-role-modal-title"
       aria-describedby="welcome-role-modal-desc"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && canDismiss) {
+          closeWelcomeModal();
+        }
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -98,18 +110,9 @@ export const WelcomeRoleModal: React.FC = () => {
       }}
     >
       <div
-        className="card"
+        className="card pharmacy-modal-panel"
         style={{
-          width: '100%',
           maxWidth: '880px',
-          backgroundColor: 'var(--color-surface-panel)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--radius-xl)',
-          boxShadow: 'var(--shadow-lg)',
-          padding: '28px 24px',
-          position: 'relative',
-          maxHeight: 'calc(100vh - 32px)',
-          overflowY: 'auto',
         }}
       >
         {canDismiss && (
@@ -119,10 +122,10 @@ export const WelcomeRoleModal: React.FC = () => {
             aria-label="Close user type selection"
             style={{
               position: 'absolute',
-              top: '16px',
-              right: '16px',
-              width: '36px',
-              height: '36px',
+              top: '14px',
+              right: '14px',
+              width: '44px',
+              height: '44px',
               borderRadius: 'var(--radius-full)',
               border: '1px solid var(--color-border-default)',
               backgroundColor: 'var(--color-surface-canvas)',
@@ -194,16 +197,17 @@ export const WelcomeRoleModal: React.FC = () => {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))',
             gap: '16px',
           }}
         >
-          {ROLE_OPTIONS.map((option) => {
+          {ROLE_OPTIONS.map((option, idx) => {
             const Icon = option.icon;
             const isSelected = selectedUserType === option.role;
             return (
               <button
                 key={option.role}
+                ref={idx === 0 ? firstRoleBtnRef : undefined}
                 type="button"
                 onClick={() => handleSelectRole(option.role)}
                 style={{

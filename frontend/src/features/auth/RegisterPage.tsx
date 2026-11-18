@@ -186,16 +186,7 @@ export const RegisterPage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: '520px', margin: '48px auto', padding: '0 16px 64px' }}>
-      <div
-        className="card"
-        style={{
-          backgroundColor: 'var(--color-surface-panel)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--radius-xl)',
-          padding: '36px 28px',
-          boxShadow: 'var(--shadow-md)',
-        }}
-      >
+      <div className="card pharmacy-auth-card">
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <BrandLogo size={52} style={{ margin: '0 auto 14px' }} />
           <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 6px' }}>
@@ -245,12 +236,14 @@ export const RegisterPage: React.FC = () => {
                 >
                   I am registering as:
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: '10px' }} role="group" aria-label="Account role">
                   <button
                     type="button"
+                    aria-pressed={roleChoice === 'PHARMACY'}
                     onClick={() => setRoleChoice('PHARMACY')}
                     style={{
                       padding: '12px 14px',
+                      minHeight: '44px',
                       borderRadius: 'var(--radius-md)',
                       border: roleChoice === 'PHARMACY' ? '2px solid var(--color-action-primary)' : '1px solid var(--color-border-default)',
                       backgroundColor: roleChoice === 'PHARMACY' ? 'var(--color-action-subtle)' : 'var(--color-surface-panel)',
@@ -270,9 +263,11 @@ export const RegisterPage: React.FC = () => {
 
                   <button
                     type="button"
+                    aria-pressed={roleChoice === 'CUSTOMER'}
                     onClick={() => setRoleChoice('CUSTOMER')}
                     style={{
                       padding: '12px 14px',
+                      minHeight: '44px',
                       borderRadius: 'var(--radius-md)',
                       border: roleChoice === 'CUSTOMER' ? '2px solid var(--color-action-primary)' : '1px solid var(--color-border-default)',
                       backgroundColor: roleChoice === 'CUSTOMER' ? 'var(--color-action-subtle)' : 'var(--color-surface-panel)',

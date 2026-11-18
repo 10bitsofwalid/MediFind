@@ -22,6 +22,11 @@ export function App() {
               color: 'var(--color-text-primary)',
             }}
           >
+            {/* Skip to Main Content link for keyboard navigation */}
+            <a href="#main-content" className="skip-link">
+              Skip to main content
+            </a>
+
             {/* Global Header */}
             <Navbar />
 
@@ -32,7 +37,7 @@ export function App() {
             <PharmacyStockReminderManager />
 
             {/* Main Application Content */}
-            <main style={{ flex: 1 }}>
+            <main id="main-content" tabIndex={-1} style={{ flex: 1, outline: 'none' }}>
               <AppRoutes />
             </main>
 

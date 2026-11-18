@@ -140,7 +140,7 @@ const ActiveStockReminderManager: React.FC<{ userId: string }> = ({ userId }) =>
         return (
           <div
             key={item.id}
-            role="dialog"
+            role="region"
             aria-label={item.title}
             className="card"
             style={{
@@ -198,8 +198,8 @@ const ActiveStockReminderManager: React.FC<{ userId: string }> = ({ userId }) =>
                 onClick={() => dismissNotification(item.id)}
                 aria-label={`Dismiss ${item.title}`}
                 style={{
-                  width: '28px',
-                  height: '28px',
+                  width: '36px',
+                  height: '36px',
                   borderRadius: 'var(--radius-full)',
                   border: '1px solid var(--color-border-default)',
                   backgroundColor: 'var(--color-surface-canvas)',
@@ -211,7 +211,7 @@ const ActiveStockReminderManager: React.FC<{ userId: string }> = ({ userId }) =>
                   flexShrink: 0,
                 }}
               >
-                <X size={14} aria-hidden="true" />
+                <X size={15} aria-hidden="true" />
               </button>
             </div>
 

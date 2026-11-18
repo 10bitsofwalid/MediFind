@@ -112,16 +112,7 @@ export const LoginPage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: '480px', margin: '48px auto', padding: '0 16px 64px' }}>
-      <div
-        className="card"
-        style={{
-          backgroundColor: 'var(--color-surface-panel)',
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--radius-xl)',
-          padding: '36px 28px',
-          boxShadow: 'var(--shadow-md)',
-        }}
-      >
+      <div className="card pharmacy-auth-card">
         {/* Brand Icon & Heading */}
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <BrandLogo size={52} style={{ margin: '0 auto 14px' }} />
@@ -133,8 +124,8 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Mock Mode Admin Entry Info */}
-        {selectedUserType === 'ADMIN' && isMockApiEnabled() && (
+        {/* Mock Mode Entry Info */}
+        {isMockApiEnabled() && selectedUserType === 'ADMIN' && (
           <div
             role="note"
             style={{
@@ -155,6 +146,34 @@ export const LoginPage: React.FC = () => {
             <span>
               <strong>Mock Mode Active:</strong> Enter any valid administrator email and password to open the local
               Administrator workspace while the backend API is offline.
+            </span>
+          </div>
+        )}
+
+        {isMockApiEnabled() && selectedUserType === 'PHARMACY' && (
+          <div
+            role="note"
+            style={{
+              padding: '12px 14px',
+              backgroundColor: 'var(--color-action-subtle)',
+              border: '1px solid rgba(23, 107, 135, 0.25)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--color-action-primary)',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '8px',
+              marginBottom: '20px',
+              lineHeight: 1.45,
+            }}
+          >
+            <Info size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: '2px' }} />
+            <span>
+              <strong>Local Mock Mode:</strong> Create a synthetic Pharmacy Owner account via{' '}
+              <Link to="/register" style={{ color: 'var(--color-action-primary)', fontWeight: 700 }}>
+                Create an Account
+              </Link>{' '}
+              to preview onboarding, verification, profile, and inventory locally while the team API is offline.
             </span>
           </div>
         )}

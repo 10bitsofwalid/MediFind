@@ -593,73 +593,75 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          <label
-            htmlFor={inputId}
-            style={{
-              position: 'absolute',
-              width: '1px',
-              height: '1px',
-              overflow: 'hidden',
-              clip: 'rect(0, 0, 0, 0)',
-            }}
-          >
-            Optional stock quantity for {item.medicineName}
-          </label>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', flexWrap: 'nowrap' }}>
+            <label
+              htmlFor={inputId}
+              style={{
+                position: 'absolute',
+                width: '1px',
+                height: '1px',
+                overflow: 'hidden',
+                clip: 'rect(0, 0, 0, 0)',
+              }}
+            >
+              Optional stock quantity for {item.medicineName}
+            </label>
 
-          <button
-            type="button"
-            className="inventory-stepper-btn"
-            onClick={() => handleStepQuantity(item, -1)}
-            disabled={isUpdating || rawVal === '0'}
-            aria-label={`Decrease quantity for ${item.medicineName}`}
-          >
-            <Minus size={14} aria-hidden="true" />
-          </button>
+            <button
+              type="button"
+              className="inventory-stepper-btn"
+              onClick={() => handleStepQuantity(item, -1)}
+              disabled={isUpdating || rawVal === '0'}
+              aria-label={`Decrease quantity for ${item.medicineName}`}
+            >
+              <Minus size={14} aria-hidden="true" />
+            </button>
 
-          <input
-            id={inputId}
-            type="number"
-            min="0"
-            step="1"
-            inputMode="numeric"
-            value={rawVal}
-            onChange={(e) => handleQuantityChange(item.stockId, e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && dirty && !errorText && !isUpdating) {
-                e.preventDefault();
-                handleSaveQuantityOnly(item);
-              }
-            }}
-            placeholder="Optional"
-            disabled={isUpdating}
-            aria-invalid={Boolean(errorText)}
-            aria-describedby={errorText ? errorId : undefined}
-            style={{
-              width: compact ? '90px' : '78px',
-              minHeight: '38px',
-              padding: '6px 8px',
-              borderRadius: 'var(--radius-md)',
-              border: errorText
-                ? '1px solid var(--color-status-problem)'
-                : dirty
-                ? '1px solid var(--color-action-primary)'
-                : '1px solid var(--color-border-default)',
-              backgroundColor: 'var(--color-surface-panel)',
-              color: 'var(--color-text-primary)',
-              fontSize: '13px',
-              textAlign: 'center',
-            }}
-          />
+            <input
+              id={inputId}
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={rawVal}
+              onChange={(e) => handleQuantityChange(item.stockId, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && dirty && !errorText && !isUpdating) {
+                  e.preventDefault();
+                  handleSaveQuantityOnly(item);
+                }
+              }}
+              placeholder="Optional"
+              disabled={isUpdating}
+              aria-invalid={Boolean(errorText)}
+              aria-describedby={errorText ? errorId : undefined}
+              style={{
+                width: compact ? '84px' : '64px',
+                minHeight: '40px',
+                padding: '6px 6px',
+                borderRadius: 'var(--radius-md)',
+                border: errorText
+                  ? '1px solid var(--color-status-problem)'
+                  : dirty
+                  ? '1px solid var(--color-action-primary)'
+                  : '1px solid var(--color-border-default)',
+                backgroundColor: 'var(--color-surface-panel)',
+                color: 'var(--color-text-primary)',
+                fontSize: '13px',
+                textAlign: 'center',
+              }}
+            />
 
-          <button
-            type="button"
-            className="inventory-stepper-btn"
-            onClick={() => handleStepQuantity(item, 1)}
-            disabled={isUpdating}
-            aria-label={`Increase quantity for ${item.medicineName}`}
-          >
-            <Plus size={14} aria-hidden="true" />
-          </button>
+            <button
+              type="button"
+              className="inventory-stepper-btn"
+              onClick={() => handleStepQuantity(item, 1)}
+              disabled={isUpdating}
+              aria-label={`Increase quantity for ${item.medicineName}`}
+            >
+              <Plus size={14} aria-hidden="true" />
+            </button>
+          </div>
 
           {dirty && (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -667,13 +669,12 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                 type="button"
                 onClick={() => handleSaveQuantityOnly(item)}
                 disabled={isUpdating || Boolean(errorText)}
-                className="btn-primary"
+                className="btn-primary inventory-qty-action-btn"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '4px',
-                  padding: '6px 10px',
-                  minHeight: '36px',
+                  padding: '6px 12px',
                   borderRadius: 'var(--radius-md)',
                   fontSize: '12px',
                   cursor: isUpdating || errorText ? 'not-allowed' : 'pointer',
@@ -693,13 +694,12 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
                 onClick={() => handleResetQuantityDraft(item.stockId)}
                 disabled={isUpdating}
                 aria-label={`Discard unsaved quantity for ${item.medicineName}`}
-                className="btn-secondary"
+                className="btn-secondary inventory-qty-action-btn"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: '6px 8px',
-                  minHeight: '36px',
+                  padding: '6px 10px',
                   borderRadius: 'var(--radius-md)',
                   border: '1px solid var(--color-border-default)',
                   backgroundColor: 'var(--color-surface-panel)',

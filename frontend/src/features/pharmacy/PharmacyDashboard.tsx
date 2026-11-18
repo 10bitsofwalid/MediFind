@@ -535,7 +535,8 @@ export const PharmacyDashboard: React.FC = () => {
                   type="button"
                   onClick={() => handleSimulateStatus(st)}
                   style={{
-                    padding: '4px 10px',
+                    padding: '6px 12px',
+                    minHeight: '36px',
                     fontSize: '12px',
                     fontWeight: isActive ? 700 : 500,
                     borderRadius: 'var(--radius-full)',
@@ -592,9 +593,9 @@ export const PharmacyDashboard: React.FC = () => {
           borderBottom: '1px solid var(--color-border-default)',
         }}
       >
-        <div>
+        <div style={{ minWidth: 0, flex: '1 1 240px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
+            <h1 style={{ fontSize: '26px', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0, wordBreak: 'break-word' }}>
               {pharmacyName}
             </h1>
             {currentStatus === 'verified' && (
@@ -618,7 +619,7 @@ export const PharmacyDashboard: React.FC = () => {
             )}
           </div>
 
-          <div style={{ fontSize: '14px', color: 'var(--color-text-secondary)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: '14px', color: 'var(--color-text-secondary)', display: 'flex', gap: '8px', flexWrap: 'wrap', overflowWrap: 'anywhere' }}>
             <span>License: <code>{licenseNumber}</code></span>
             <span>•</span>
             <span>{addressString}</span>
@@ -626,7 +627,7 @@ export const PharmacyDashboard: React.FC = () => {
         </div>
 
         {/* Header Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={() => fetchStatus(true)}
@@ -637,7 +638,8 @@ export const PharmacyDashboard: React.FC = () => {
               alignItems: 'center',
               gap: '6px',
               fontSize: '13px',
-              padding: '8px 14px',
+              padding: '10px 14px',
+              minHeight: '44px',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border-default)',
               backgroundColor: 'var(--color-surface-panel)',
@@ -664,7 +666,8 @@ export const PharmacyDashboard: React.FC = () => {
               alignItems: 'center',
               gap: '6px',
               fontSize: '13px',
-              padding: '8px 16px',
+              padding: '10px 16px',
+              minHeight: '44px',
               borderRadius: 'var(--radius-md)',
               fontWeight: 600,
               textDecoration: 'none',
@@ -687,17 +690,17 @@ export const PharmacyDashboard: React.FC = () => {
         <section
           role="region"
           aria-label="Verification status: Pending Review"
+          className="pharmacy-status-banner"
           style={{
             backgroundColor: 'var(--color-surface-panel)',
             border: '1px solid rgba(152, 88, 0, 0.35)',
             borderLeft: '6px solid var(--color-status-caution)',
             borderRadius: 'var(--radius-lg)',
-            padding: '24px',
             boxShadow: 'var(--shadow-sm)',
             marginBottom: '28px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+          <div className="pharmacy-status-banner-inner">
             <div
               style={{
                 width: '44px',
@@ -715,7 +718,7 @@ export const PharmacyDashboard: React.FC = () => {
               <Clock3 size={24} />
             </div>
 
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
                 <span
                   style={{
@@ -831,18 +834,18 @@ export const PharmacyDashboard: React.FC = () => {
         <section
           role="region"
           aria-label="Verification status: Verified and Active"
+          className="pharmacy-status-banner"
           style={{
             backgroundColor: 'var(--color-surface-panel)',
             border: '1px solid rgba(24, 115, 75, 0.35)',
             borderLeft: '6px solid var(--color-status-available)',
             borderRadius: 'var(--radius-lg)',
-            padding: '24px',
             boxShadow: 'var(--shadow-sm)',
             marginBottom: '28px',
             position: 'relative',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+          <div className="pharmacy-status-banner-inner">
             <div
               style={{
                 width: '44px',
@@ -860,7 +863,7 @@ export const PharmacyDashboard: React.FC = () => {
               <CheckCircle2 size={26} />
             </div>
 
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
                   display: 'flex',
@@ -903,7 +906,6 @@ export const PharmacyDashboard: React.FC = () => {
                       borderRadius: 'var(--radius-full)',
                       border: '1px solid var(--color-border-default)',
                     }}
-                    aria-live="polite"
                   >
                     Closes in {approvalCountdown}s
                   </span>
@@ -916,7 +918,8 @@ export const PharmacyDashboard: React.FC = () => {
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '4px',
-                      padding: '4px 10px',
+                      padding: '6px 12px',
+                      minHeight: '36px',
                       borderRadius: 'var(--radius-full)',
                       border: '1px solid var(--color-border-default)',
                       backgroundColor: 'var(--color-surface-canvas)',
@@ -971,17 +974,17 @@ export const PharmacyDashboard: React.FC = () => {
         <section
           role="alert"
           aria-label="Verification status: Application Rejected"
+          className="pharmacy-status-banner"
           style={{
             backgroundColor: 'var(--color-surface-panel)',
             border: '1px solid rgba(180, 35, 47, 0.35)',
             borderLeft: '6px solid var(--color-status-problem)',
             borderRadius: 'var(--radius-lg)',
-            padding: '24px',
             boxShadow: 'var(--shadow-sm)',
             marginBottom: '28px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+          <div className="pharmacy-status-banner-inner">
             <div
               style={{
                 width: '44px',
@@ -999,7 +1002,7 @@ export const PharmacyDashboard: React.FC = () => {
               <ShieldAlert size={26} />
             </div>
 
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
                 <span
                   style={{
@@ -1121,17 +1124,17 @@ export const PharmacyDashboard: React.FC = () => {
         <section
           role="alert"
           aria-label="Verification status: Account Suspended"
+          className="pharmacy-status-banner"
           style={{
             backgroundColor: 'var(--color-surface-panel)',
             border: '1px solid rgba(180, 35, 47, 0.35)',
             borderLeft: '6px solid var(--color-status-problem)',
             borderRadius: 'var(--radius-lg)',
-            padding: '24px',
             boxShadow: 'var(--shadow-sm)',
             marginBottom: '28px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+          <div className="pharmacy-status-banner-inner">
             <div
               style={{
                 width: '44px',
@@ -1149,7 +1152,7 @@ export const PharmacyDashboard: React.FC = () => {
               <AlertOctagon size={26} />
             </div>
 
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
                 <span
                   style={{
@@ -1682,8 +1685,8 @@ export const PharmacyDashboard: React.FC = () => {
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        width: '28px',
-                        height: '28px',
+                        width: '36px',
+                        height: '36px',
                         borderRadius: 'var(--radius-full)',
                         border: '1px solid rgba(24, 115, 75, 0.3)',
                         backgroundColor: 'var(--color-surface-panel)',
@@ -1774,9 +1777,9 @@ export const PharmacyDashboard: React.FC = () => {
 
           <div className="pharmacy-grid-2">
             {/* Contact Person */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0 }}>
               <Building2 size={18} color="var(--color-action-primary)" style={{ marginTop: '2px', flexShrink: 0 }} aria-hidden="true" />
-              <div>
+              <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                 <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', display: 'block' }}>
                   Representative / Owner
                 </span>
@@ -1785,9 +1788,9 @@ export const PharmacyDashboard: React.FC = () => {
             </div>
 
             {/* Drug License */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0 }}>
               <FileText size={18} color="var(--color-action-primary)" style={{ marginTop: '2px', flexShrink: 0 }} aria-hidden="true" />
-              <div>
+              <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                 <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', display: 'block' }}>
                   Drug Trade License
                 </span>
@@ -1796,9 +1799,9 @@ export const PharmacyDashboard: React.FC = () => {
             </div>
 
             {/* Phone & Email */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0 }}>
               <Phone size={18} color="var(--color-action-primary)" style={{ marginTop: '2px', flexShrink: 0 }} aria-hidden="true" />
-              <div>
+              <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                 <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', display: 'block' }}>
                   Contact Information
                 </span>
@@ -1809,9 +1812,9 @@ export const PharmacyDashboard: React.FC = () => {
             </div>
 
             {/* Address */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0 }}>
               <MapPin size={18} color="var(--color-action-primary)" style={{ marginTop: '2px', flexShrink: 0 }} aria-hidden="true" />
-              <div>
+              <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                 <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', display: 'block' }}>
                   Physical Address
                 </span>
@@ -1820,9 +1823,9 @@ export const PharmacyDashboard: React.FC = () => {
             </div>
 
             {/* Operating Hours */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', gridColumn: '1 / -1' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', gridColumn: '1 / -1', minWidth: 0 }}>
               <Clock size={18} color="var(--color-action-primary)" style={{ marginTop: '2px', flexShrink: 0 }} aria-hidden="true" />
-              <div>
+              <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                 <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', display: 'block' }}>
                   Operating Hours Summary
                 </span>

@@ -56,12 +56,6 @@ export const AvailabilityStatus: React.FC<AvailabilityStatusProps> = ({
 
   return (
     <span
-      role="status"
-      aria-label={`Medicine reported availability: ${config.label}${
-        typeof quantity === 'number'
-          ? ` (${quantity === 0 ? '0 units' : `${quantity} units remaining`})`
-          : ''
-      }`}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -76,6 +70,7 @@ export const AvailabilityStatus: React.FC<AvailabilityStatusProps> = ({
         letterSpacing: '0.01em',
       }}
     >
+      <span className="sr-only">Reported availability: </span>
       {showIcon && <IconComponent size={isSmall ? 13 : 15} aria-hidden={true} />}
       <span>{config.label}</span>
       {typeof quantity === 'number' && quantity >= 0 && (

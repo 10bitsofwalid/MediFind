@@ -399,6 +399,15 @@ export const PharmacyRegisterPage: React.FC = () => {
     }
 
     setErrors(stepErrors);
+    if (Object.keys(stepErrors).length > 0) {
+      setTouched((prev) => {
+        const next = { ...prev };
+        Object.keys(stepErrors).forEach((key) => {
+          next[key] = true;
+        });
+        return next;
+      });
+    }
     return Object.keys(stepErrors).length === 0;
   };
 
@@ -443,25 +452,20 @@ export const PharmacyRegisterPage: React.FC = () => {
       return;
     }
 
-    // Validate all steps
-    const isBusinessValid = validateStep('business');
-    const isAddressValid = validateStep('address');
-    const isLicenseValid = validateStep('license');
-    const isHoursValid = validateStep('hours');
-
-    if (!isBusinessValid) {
+    // Validate all steps sequentially so errors for the first failing step are preserved
+    if (!validateStep('business')) {
       setCurrentStep('business');
       return;
     }
-    if (!isAddressValid) {
+    if (!validateStep('address')) {
       setCurrentStep('address');
       return;
     }
-    if (!isLicenseValid) {
+    if (!validateStep('license')) {
       setCurrentStep('license');
       return;
     }
-    if (!isHoursValid) {
+    if (!validateStep('hours')) {
       setCurrentStep('hours');
       return;
     }
@@ -1014,9 +1018,10 @@ export const PharmacyRegisterPage: React.FC = () => {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))',
               gap: '16px',
               fontSize: '14px',
+              overflowWrap: 'anywhere',
             }}
           >
             <div>
@@ -1365,12 +1370,11 @@ export const PharmacyRegisterPage: React.FC = () => {
         aria-label="Application Progress"
         style={{
           display: 'flex',
-          justifyContent: 'space-between',
+          justifyContent: 'center',
           alignItems: 'center',
+          flexWrap: 'wrap',
           gap: '8px',
           marginBottom: '28px',
-          overflowX: 'auto',
-          paddingBottom: '8px',
         }}
       >
         {stepConfig.map((s, idx) => {
@@ -1383,6 +1387,7 @@ export const PharmacyRegisterPage: React.FC = () => {
             <button
               key={s.id}
               type="button"
+              disabled={!isUnlocked}
               onClick={() => {
                 // Allow clicking any step previously reached or current
                 if (isUnlocked) {
@@ -1393,8 +1398,8 @@ export const PharmacyRegisterPage: React.FC = () => {
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '8px',
-                padding: '10px 14px',
+                gap: '6px',
+                padding: '8px 12px',
                 borderRadius: 'var(--radius-md)',
                 border: isActive
                   ? '1px solid var(--color-action-primary)'
@@ -1411,13 +1416,12 @@ export const PharmacyRegisterPage: React.FC = () => {
                   : isCompleted
                   ? 'var(--color-status-available)'
                   : 'var(--color-text-secondary)',
-                fontSize: '13px',
+                fontSize: '12.5px',
                 fontWeight: isActive ? 600 : 500,
                 cursor: isUnlocked ? 'pointer' : 'not-allowed',
                 opacity: isUnlocked ? 1 : 0.65,
                 whiteSpace: 'nowrap',
                 minHeight: '44px',
-                flexShrink: 0,
               }}
               aria-current={isActive ? 'step' : undefined}
             >
@@ -1488,13 +1492,8 @@ export const PharmacyRegisterPage: React.FC = () => {
       {/* Main Application Form Container */}
       <form onSubmit={handleSubmitApplication} noValidate>
         <div
-          className="card form-panel"
+          className="card form-panel pharmacy-section-card"
           style={{
-            backgroundColor: 'var(--color-surface-panel)',
-            border: '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-xl)',
-            padding: '28px 24px',
-            boxShadow: 'var(--shadow-sm)',
             marginBottom: '24px',
           }}
         >
@@ -1602,7 +1601,7 @@ export const PharmacyRegisterPage: React.FC = () => {
               </div>
 
               {/* Phone & Email Row */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: '16px' }}>
                 <div>
                   <label
                     htmlFor="contact-phone"
@@ -1753,7 +1752,7 @@ export const PharmacyRegisterPage: React.FC = () => {
               </div>
 
               {/* City, Area, Postal Code */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '16px' }}>
                 <div>
                   <label
                     htmlFor="pharmacy-city"
@@ -1773,21 +1772,11 @@ export const PharmacyRegisterPage: React.FC = () => {
                     onBlur={(e) => handleBlur('city', e.target.value)}
                     placeholder="e.g. Dhaka"
                     aria-invalid={!!errors.city}
-                    className="form-input"
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      fontSize: '15px',
-                      borderRadius: 'var(--radius-md)',
-                      border: errors.city ? '1px solid var(--color-status-problem)' : '1px solid var(--color-border-default)',
-                      backgroundColor: 'var(--color-surface-panel)',
-                      color: 'var(--color-text-primary)',
-                      boxSizing: 'border-box',
-                      minHeight: '44px',
-                    }}
+                    aria-describedby={errors.city ? 'city-error' : undefined}
+                    className={`medifind-input${errors.city ? ' is-invalid' : ''}`}
                   />
                   {errors.city && (
-                    <span role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span id="city-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <AlertCircle size={14} aria-hidden="true" /> {errors.city}
                     </span>
                   )}
@@ -1812,21 +1801,11 @@ export const PharmacyRegisterPage: React.FC = () => {
                     onBlur={(e) => handleBlur('area', e.target.value)}
                     placeholder="e.g. Uttara / Dhanmondi"
                     aria-invalid={!!errors.area}
-                    className="form-input"
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      fontSize: '15px',
-                      borderRadius: 'var(--radius-md)',
-                      border: errors.area ? '1px solid var(--color-status-problem)' : '1px solid var(--color-border-default)',
-                      backgroundColor: 'var(--color-surface-panel)',
-                      color: 'var(--color-text-primary)',
-                      boxSizing: 'border-box',
-                      minHeight: '44px',
-                    }}
+                    aria-describedby={errors.area ? 'area-error' : undefined}
+                    className={`medifind-input${errors.area ? ' is-invalid' : ''}`}
                   />
                   {errors.area && (
-                    <span role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span id="area-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <AlertCircle size={14} aria-hidden="true" /> {errors.area}
                     </span>
                   )}
@@ -1842,22 +1821,23 @@ export const PharmacyRegisterPage: React.FC = () => {
                   <input
                     id="pharmacy-postal"
                     type="text"
+                    inputMode="numeric"
                     value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
-                    placeholder="e.g. 1230"
-                    className="form-input"
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      fontSize: '15px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--color-border-default)',
-                      backgroundColor: 'var(--color-surface-panel)',
-                      color: 'var(--color-text-primary)',
-                      boxSizing: 'border-box',
-                      minHeight: '44px',
+                    onChange={(e) => {
+                      setPostalCode(e.target.value);
+                      if (touched.postalCode) handleBlur('postalCode', e.target.value);
                     }}
+                    onBlur={(e) => handleBlur('postalCode', e.target.value)}
+                    placeholder="e.g. 1230"
+                    aria-invalid={!!errors.postalCode}
+                    aria-describedby={errors.postalCode ? 'postal-error' : undefined}
+                    className={`medifind-input${errors.postalCode ? ' is-invalid' : ''}`}
                   />
+                  {errors.postalCode && (
+                    <span id="postal-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <AlertCircle size={14} aria-hidden="true" /> {errors.postalCode}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -1946,7 +1926,7 @@ export const PharmacyRegisterPage: React.FC = () => {
               </div>
 
               {/* Issuing Authority & Category */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: '16px' }}>
                 <div>
                   <label
                     htmlFor="issuing-authority"
@@ -1966,21 +1946,11 @@ export const PharmacyRegisterPage: React.FC = () => {
                     onBlur={(e) => handleBlur('issuingAuthority', e.target.value)}
                     placeholder="e.g. Directorate General of Drug Administration (DGDA)"
                     aria-invalid={!!errors.issuingAuthority}
-                    className="form-input"
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      fontSize: '15px',
-                      borderRadius: 'var(--radius-md)',
-                      border: errors.issuingAuthority ? '1px solid var(--color-status-problem)' : '1px solid var(--color-border-default)',
-                      backgroundColor: 'var(--color-surface-panel)',
-                      color: 'var(--color-text-primary)',
-                      boxSizing: 'border-box',
-                      minHeight: '44px',
-                    }}
+                    aria-describedby={errors.issuingAuthority ? 'issuing-authority-error' : undefined}
+                    className={`medifind-input${errors.issuingAuthority ? ' is-invalid' : ''}`}
                   />
                   {errors.issuingAuthority && (
-                    <span role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span id="issuing-authority-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <AlertCircle size={14} aria-hidden="true" /> {errors.issuingAuthority}
                     </span>
                   )}
@@ -1997,17 +1967,7 @@ export const PharmacyRegisterPage: React.FC = () => {
                     id="license-type"
                     value={licenseType}
                     onChange={(e) => setLicenseType(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      fontSize: '15px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--color-border-default)',
-                      backgroundColor: 'var(--color-surface-panel)',
-                      color: 'var(--color-text-primary)',
-                      boxSizing: 'border-box',
-                      minHeight: '44px',
-                    }}
+                    className="medifind-select"
                   >
                     <option value="Retail Pharmacy">Retail Pharmacy (Model Pharmacy / Grade A)</option>
                     <option value="General Retail Pharmacy">General Retail Pharmacy</option>
@@ -2029,20 +1989,23 @@ export const PharmacyRegisterPage: React.FC = () => {
                   id="license-expiry"
                   type="date"
                   value={licenseExpiryDate}
-                  onChange={(e) => setLicenseExpiryDate(e.target.value)}
+                  onChange={(e) => {
+                    setLicenseExpiryDate(e.target.value);
+                    if (touched.licenseExpiryDate) handleBlur('licenseExpiryDate', e.target.value);
+                  }}
+                  onBlur={(e) => handleBlur('licenseExpiryDate', e.target.value)}
+                  aria-invalid={!!errors.licenseExpiryDate}
+                  aria-describedby={errors.licenseExpiryDate ? 'license-expiry-error' : undefined}
+                  className={`medifind-input${errors.licenseExpiryDate ? ' is-invalid' : ''}`}
                   style={{
-                    width: '100%',
                     maxWidth: '320px',
-                    padding: '10px 14px',
-                    fontSize: '15px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border-default)',
-                    backgroundColor: 'var(--color-surface-panel)',
-                    color: 'var(--color-text-primary)',
-                    boxSizing: 'border-box',
-                    minHeight: '44px',
                   }}
                 />
+                {errors.licenseExpiryDate && (
+                  <span id="license-expiry-error" role="alert" style={{ fontSize: '12px', color: 'var(--color-status-problem)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <AlertCircle size={14} aria-hidden="true" /> {errors.licenseExpiryDate}
+                  </span>
+                )}
               </div>
 
               {/* Regulatory Assurance Callout */}
@@ -2118,8 +2081,9 @@ export const PharmacyRegisterPage: React.FC = () => {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))',
                   gap: '16px',
+                  overflowWrap: 'anywhere',
                 }}
               >
                 {/* Business Info Card */}

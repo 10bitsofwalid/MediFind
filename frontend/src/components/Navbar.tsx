@@ -1,5 +1,5 @@
 // src/components/Navbar.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../app/useAuth';
 import type { Role } from '../types/pharmacy';
@@ -26,11 +26,30 @@ const USER_TYPE_LABELS: Record<Role, string> = {
   ADMIN: 'Administrator',
 };
 
+const USER_TYPE_SHORT_LABELS: Record<Role, string> = {
+  CUSTOMER: 'Customer',
+  PHARMACY: 'Owner',
+  ADMIN: 'Admin',
+};
+
 export const Navbar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, selectedUserType, openWelcomeModal, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileMenuOpen(false);
+        mobileMenuBtnRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mobileMenuOpen]);
 
   const effectiveRole: Role | null = user?.role ?? selectedUserType;
 
@@ -118,37 +137,19 @@ export const Navbar: React.FC = () => {
         backdropFilter: 'blur(10px)',
       }}
     >
-      <div
-        style={{
-          maxWidth: '1100px',
-          margin: '0 auto',
-          padding: '0 16px',
-          height: '64px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '12px',
-        }}
-      >
+      <div className="navbar-inner">
         {/* Brand Logo & Title */}
         <Link
           to={brandHomePath}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            textDecoration: 'none',
-            color: 'var(--color-text-primary)',
-            flexShrink: 0,
-          }}
+          className="navbar-brand"
           aria-label={`MediFind ${brandSubtitle}`}
         >
-          <BrandLogo size={36} />
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <BrandLogo size={36} style={{ flexShrink: 0 }} />
+          <div className="navbar-brand-text">
             <span style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
               MediFind
             </span>
-            <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
+            <span className="navbar-brand-subtitle">
               {brandSubtitle}
             </span>
           </div>
@@ -198,26 +199,16 @@ export const Navbar: React.FC = () => {
           <button
             type="button"
             onClick={openWelcomeModal}
-            className="btn-secondary"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '5px 9px',
-              borderRadius: 'var(--radius-full)',
-              backgroundColor: 'var(--color-surface-canvas)',
-              border: '1px solid var(--color-border-default)',
-              fontSize: '12px',
-              color: 'var(--color-text-primary)',
-              fontWeight: 600,
-              cursor: 'pointer',
-              minHeight: '34px',
-              whiteSpace: 'nowrap',
-            }}
-            aria-label="Switch user type"
+            className="btn-secondary navbar-role-pill"
+            aria-label={`Switch user type (current: ${effectiveRole ? USER_TYPE_LABELS[effectiveRole] : 'none selected'})`}
           >
             <UserCheck size={13} color="var(--color-action-primary)" aria-hidden="true" />
-            <span>{effectiveRole ? USER_TYPE_LABELS[effectiveRole] : 'Select Type'}</span>
+            <span className="navbar-role-label-full">
+              {effectiveRole ? USER_TYPE_LABELS[effectiveRole] : 'Select Type'}
+            </span>
+            <span className="navbar-role-label-short">
+              {effectiveRole ? USER_TYPE_SHORT_LABELS[effectiveRole] : 'Role'}
+            </span>
             <RefreshCw size={11} color="var(--color-text-secondary)" aria-hidden="true" />
           </button>
 
@@ -238,7 +229,7 @@ export const Navbar: React.FC = () => {
                 fontSize: '12px',
                 fontWeight: 500,
                 cursor: 'pointer',
-                minHeight: '34px',
+                minHeight: '36px',
                 whiteSpace: 'nowrap',
               }}
               aria-label="Sign out"
@@ -250,6 +241,7 @@ export const Navbar: React.FC = () => {
 
           {/* Mobile hamburger menu toggle */}
           <button
+            ref={mobileMenuBtnRef}
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="mobile-menu-btn"
@@ -257,17 +249,19 @@ export const Navbar: React.FC = () => {
               display: 'none',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '40px',
-              height: '40px',
+              width: '44px',
+              height: '44px',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border-default)',
               backgroundColor: 'var(--color-surface-panel)',
               color: 'var(--color-text-primary)',
               cursor: 'pointer',
             }}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-nav-drawer"
             aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
           >
-            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            {mobileMenuOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
           </button>
         </div>
       </div>
@@ -289,6 +283,7 @@ export const Navbar: React.FC = () => {
             }}
           />
           <nav
+            id="mobile-nav-drawer"
             className="mobile-nav-drawer"
             aria-label="Mobile Navigation"
             style={{

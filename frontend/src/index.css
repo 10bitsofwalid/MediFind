@@ -500,9 +500,155 @@ a:focus-visible {
   position: relative;
 }
 
+/* Skip to main content link for keyboard navigation */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 500;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-action-primary);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-md);
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  left: 12px;
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Navbar responsive layout (360px safe) */
+.navbar-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 16px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--color-text-primary);
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.navbar-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.navbar-brand-subtitle {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navbar-role-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface-canvas);
+  border: 1px solid var(--color-border-default);
+  font-size: 12px;
+  color: var(--color-text-primary);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.navbar-role-label-short {
+  display: none;
+}
+
+@media (max-width: 680px) {
+  .navbar-inner {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .navbar-role-pill {
+    min-height: 44px;
+    padding: 6px 10px;
+  }
+}
+
+@media (max-width: 440px) {
+  .navbar-role-label-full {
+    display: none;
+  }
+  .navbar-role-label-short {
+    display: inline;
+  }
+  .navbar-brand {
+    gap: 8px;
+  }
+}
+
+/* Status banner & auth card responsive spacing */
+.pharmacy-status-banner {
+  padding: 24px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pharmacy-status-banner-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+}
+
+.pharmacy-auth-card {
+  background-color: var(--color-surface-panel);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  padding: 36px 28px;
+  box-shadow: var(--shadow-md);
+}
+
+.inventory-qty-action-btn {
+  min-height: 40px;
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  .inventory-qty-action-btn {
+    min-height: 44px;
+  }
+}
+
 @media (max-width: 600px) {
   .pharmacy-section-card {
     padding: 16px;
+    border-radius: var(--radius-lg);
+  }
+  .pharmacy-status-banner {
+    padding: 16px;
+  }
+  .pharmacy-status-banner-inner {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .pharmacy-auth-card {
+    padding: 24px 18px;
     border-radius: var(--radius-lg);
   }
   .pharmacy-modal-panel {
