@@ -2,3 +2,5 @@ node_modules
 package-lock.json
 agent_contents_pharmacy_operations
 agent_updates
+dist
+backend/dist
