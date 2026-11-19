@@ -6,18 +6,12 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { isValidationError } from './validation/validationError';
 import { AuthorizationError } from './auth/ownership';
+import { ApplicationError } from './utils/errors';
+import ownerRouter from './routes/ownerRoutes';
 import {
-  syntheticPendingApplication,
-  syntheticVerifiedPharmacy,
-  syntheticStockItems,
-  syntheticStockHistory,
   syntheticMedicines,
 } from './fixtures/syntheticFixtures';
 import {
-  formatApplicationResponse,
-  formatPharmacyResponse,
-  formatStockRecord,
-  formatStockHistoryResponse,
   wrapEnvelope,
 } from './utils/responseEnvelope';
 
@@ -92,42 +86,9 @@ app.get('/api/medicines', (req: Request, res: Response) => {
   res.json(wrapEnvelope(results));
 });
 
-// Pharmacy Application Status (GET /api/owner/pharmacy-application)
-app.get('/api/owner/pharmacy-application', (_req: Request, res: Response) => {
-  res.json(formatApplicationResponse(syntheticPendingApplication, true));
-});
-
-// Pharmacy Profile (GET /api/owner/pharmacy)
-app.get('/api/owner/pharmacy', (_req: Request, res: Response) => {
-  res.json(formatPharmacyResponse(syntheticVerifiedPharmacy, true));
-});
-
-// Inventory List (GET /api/owner/inventory)
-app.get('/api/owner/inventory', (req: Request, res: Response) => {
-  const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
-  const status = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
-
-  let items = syntheticStockItems;
-
-  if (q) {
-    items = items.filter(
-      (item) =>
-        item.medicineName.toLowerCase().includes(q) ||
-        item.genericName.toLowerCase().includes(q)
-    );
-  }
-
-  if (status && status !== 'all') {
-    items = items.filter((item) => item.status === status);
-  }
-
-  res.json(wrapEnvelope(items));
-});
-
-// Stock Item History (GET /api/owner/inventory/:stockId/history)
-app.get('/api/owner/inventory/:stockId/history', (_req: Request, res: Response) => {
-  res.json(formatStockHistoryResponse(syntheticStockHistory, { limit: 20, nextCursor: null }, true));
-});
+// Pharmacy Owner Operations Namespace (/api/owner and /owner)
+app.use('/api/owner', ownerRouter);
+app.use('/owner', ownerRouter);
 
 // Standard 404 Handler
 app.use((req: Request, res: Response) => {
@@ -139,7 +100,7 @@ app.use((req: Request, res: Response) => {
   });
 });
 
-// Global Normalized Error Handler (Field-level 422 & Auth envelopes)
+// Global Normalized Error Handler (Field-level 422, Auth & Business rules envelopes)
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (isValidationError(err)) {
     res.status(err.status || 422).json(err.toJSON());
@@ -148,6 +109,28 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
   if (err instanceof AuthorizationError) {
     res.status(err.status || 403).json(err.toJSON());
+    return;
+  }
+
+  if (err instanceof ApplicationError) {
+    res.status(err.status).json(err.toJSON());
+    return;
+  }
+
+  if (err && typeof err === 'object' && 'code' in err && 'status' in err) {
+    const e = err as {
+      status?: number;
+      code?: string;
+      message?: string;
+      fields?: Record<string, string>;
+    };
+    res.status(e.status || 500).json({
+      error: {
+        code: e.code || 'SERVER_ERROR',
+        message: e.message || 'An error occurred.',
+        ...(e.fields ? { fields: e.fields } : {}),
+      },
+    });
     return;
   }
 
@@ -181,8 +164,12 @@ async function startServer() {
   });
 }
 
-// Start if executed directly
-if (process.env.NODE_ENV !== 'test') {
+// Start if executed directly and not running under a test runner
+const isRunningTests =
+  process.env.NODE_ENV === 'test' ||
+  process.argv.some((arg) => arg.includes('test'));
+
+if (!isRunningTests) {
   startServer();
 }
 

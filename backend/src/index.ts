@@ -62,6 +62,12 @@ export * from './validation';
 
 // Auth and Ownership
 export * from './auth/ownership';
+export * from './middleware/authMiddleware';
+
+// Pharmacy Application Service & Routes
+export * from './services/pharmacyApplicationService';
+export * from './controllers/pharmacyApplicationController';
+export { default as ownerRoutes } from './routes/ownerRoutes';
 
 // Synthetic Fixtures
 export * from './fixtures';
@@ -69,3 +75,4 @@ export * from './fixtures';
 // Utilities
 export * from './utils/responseEnvelope';
 export * from './utils/freshness';
+export * from './utils/errors';

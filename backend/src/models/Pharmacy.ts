@@ -8,7 +8,7 @@ import type {
 import { normalizeLicenseNo } from '../validation/commonValidators';
 
 export interface IPharmacy extends Document {
-  ownerId: Types.ObjectId;
+  ownerId: Types.ObjectId | string;
   name: string;
   ownerName?: string;
   phone: string;
@@ -33,7 +33,7 @@ export interface IPharmacy extends Document {
   verificationReason?: string;
   decisionReason?: string;
   nextStep?: string;
-  verifiedBy?: Types.ObjectId | null;
+  verifiedBy?: Types.ObjectId | string | null;
   verifiedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -42,7 +42,7 @@ export interface IPharmacy extends Document {
 export const PharmacySchema = new Schema<IPharmacy>(
   {
     ownerId: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'User',
       required: true,
     },
@@ -115,7 +115,7 @@ export const PharmacySchema = new Schema<IPharmacy>(
     decisionReason: { type: String, trim: true },
     nextStep: { type: String, trim: true },
     verifiedBy: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'User',
       default: null,
     },

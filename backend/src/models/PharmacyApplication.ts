@@ -31,8 +31,8 @@ export interface IPharmacyApplicationData {
 }
 
 export interface IPharmacyApplication extends Document {
-  ownerId: Types.ObjectId;
-  pharmacyId?: Types.ObjectId | null;
+  ownerId: Types.ObjectId | string;
+  pharmacyId?: Types.ObjectId | string | null;
   status: VerificationStatus;
   submittedAt: Date;
   message: string;
@@ -41,7 +41,7 @@ export interface IPharmacyApplication extends Document {
   verificationReason?: string;
   decisionReason?: string;
   nextStep?: string;
-  reviewedBy?: Types.ObjectId | null;
+  reviewedBy?: Types.ObjectId | string | null;
   reviewedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -90,12 +90,12 @@ const PharmacyApplicationDataSchema = new Schema<IPharmacyApplicationData>(
 export const PharmacyApplicationSchema = new Schema<IPharmacyApplication>(
   {
     ownerId: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'User',
       required: true,
     },
     pharmacyId: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'Pharmacy',
       default: null,
     },
@@ -133,7 +133,7 @@ export const PharmacyApplicationSchema = new Schema<IPharmacyApplication>(
     decisionReason: { type: String, trim: true },
     nextStep: { type: String, trim: true },
     reviewedBy: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'User',
       default: null,
     },

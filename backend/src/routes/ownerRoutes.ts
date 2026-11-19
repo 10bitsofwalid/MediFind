@@ -1,0 +1,79 @@
+// backend/src/routes/ownerRoutes.ts
+import { Router, Request, Response } from 'express';
+import { requireAuth, requirePharmacyRole } from '../middleware/authMiddleware';
+import {
+  submitPharmacyApplicationHandler,
+  getPharmacyApplicationHandler,
+  updatePharmacyApplicationHandler,
+  deletePharmacyApplicationHandler,
+} from '../controllers/pharmacyApplicationController';
+import {
+  syntheticVerifiedPharmacy,
+  syntheticStockItems,
+  syntheticStockHistory,
+} from '../fixtures/syntheticFixtures';
+import {
+  formatPharmacyResponse,
+  formatStockHistoryResponse,
+  wrapEnvelope,
+} from '../utils/responseEnvelope';
+
+const router = Router();
+
+// Enforce authentication & pharmacy owner role for all /owner routes
+router.use(requireAuth, requirePharmacyRole);
+
+// ==========================================
+// Pharmacy Application Lifecycle Routes
+// ==========================================
+
+// 1. Submit Application (POST /owner/pharmacy-applications)
+router.post('/pharmacy-applications', submitPharmacyApplicationHandler);
+
+// 2. Read Application Status (GET /owner/pharmacy-application)
+router.get('/pharmacy-application', getPharmacyApplicationHandler);
+
+// 3. Correct / Resubmit Application (PATCH /owner/pharmacy-application)
+router.patch('/pharmacy-application', updatePharmacyApplicationHandler);
+
+// 4. Delete / Withdraw Application (DELETE /owner/pharmacy-applications/:applicationId or /owner/pharmacy-application)
+router.delete('/pharmacy-applications/:applicationId', deletePharmacyApplicationHandler);
+router.delete('/pharmacy-application', deletePharmacyApplicationHandler);
+
+// ==========================================
+// Existing Pharmacy Profile & Inventory Baseline
+// ==========================================
+
+// Read Pharmacy Profile (GET /owner/pharmacy)
+router.get('/pharmacy', (_req: Request, res: Response) => {
+  res.json(formatPharmacyResponse(syntheticVerifiedPharmacy, true));
+});
+
+// List Pharmacy Inventory (GET /owner/inventory)
+router.get('/inventory', (req: Request, res: Response) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+  const status = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
+
+  let items = syntheticStockItems;
+
+  if (q) {
+    items = items.filter(
+      (item) =>
+        item.medicineName.toLowerCase().includes(q) ||
+        item.genericName.toLowerCase().includes(q)
+    );
+  }
+
+  if (status && status !== 'all') {
+    items = items.filter((item) => item.status === status);
+  }
+
+  res.json(wrapEnvelope(items));
+});
+
+// Read Stock Item History (GET /owner/inventory/:stockId/history)
+router.get('/inventory/:stockId/history', (_req: Request, res: Response) => {
+  res.json(formatStockHistoryResponse(syntheticStockHistory, { limit: 20, nextCursor: null }, true));
+});
+
+export default router;
