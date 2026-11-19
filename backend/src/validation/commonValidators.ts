@@ -81,23 +81,43 @@ export function validateLocation(
   let latNum: number | undefined;
   let lngNum: number | undefined;
 
+  const hasLat = latitude !== undefined && latitude !== null;
+  const hasLng = longitude !== undefined && longitude !== null;
+
   // Validate explicit latitude if supplied
-  if (latitude !== undefined && latitude !== null && latitude !== '') {
-    const parsedLat = typeof latitude === 'number' ? latitude : Number(latitude);
-    if (!Number.isFinite(parsedLat) || parsedLat < -90 || parsedLat > 90) {
+  if (hasLat) {
+    if (latitude === '') {
       errors.latitude = 'Latitude must be between -90 and 90.';
     } else {
-      latNum = parsedLat;
+      const parsedLat = typeof latitude === 'number' ? latitude : Number(latitude);
+      if (!Number.isFinite(parsedLat) || parsedLat < -90 || parsedLat > 90) {
+        errors.latitude = 'Latitude must be between -90 and 90.';
+      } else {
+        latNum = parsedLat;
+      }
     }
   }
 
   // Validate explicit longitude if supplied
-  if (longitude !== undefined && longitude !== null && longitude !== '') {
-    const parsedLng = typeof longitude === 'number' ? longitude : Number(longitude);
-    if (!Number.isFinite(parsedLng) || parsedLng < -180 || parsedLng > 180) {
+  if (hasLng) {
+    if (longitude === '') {
       errors.longitude = 'Longitude must be between -180 and 180.';
     } else {
-      lngNum = parsedLng;
+      const parsedLng = typeof longitude === 'number' ? longitude : Number(longitude);
+      if (!Number.isFinite(parsedLng) || parsedLng < -180 || parsedLng > 180) {
+        errors.longitude = 'Longitude must be between -180 and 180.';
+      } else {
+        lngNum = parsedLng;
+      }
+    }
+  }
+
+  // Reject incomplete explicit coordinate pair when no GeoJSON location object is provided
+  if (location === undefined || location === null) {
+    if (hasLat && !hasLng) {
+      errors.longitude = 'Longitude is required when latitude is provided.';
+    } else if (hasLng && !hasLat) {
+      errors.latitude = 'Latitude is required when longitude is provided.';
     }
   }
 
@@ -148,8 +168,21 @@ export function validateWeeklyHoursSchedule(
 ): Record<string, string> {
   const errors: Record<string, string> = {};
 
+  const setScheduleError = (fieldSuffix: string, message: string) => {
+    const primaryKey = fieldSuffix ? `${prefix}.${fieldSuffix}` : prefix;
+    errors[primaryKey] = message;
+
+    if (prefix === 'openingHours') {
+      const altKey = fieldSuffix ? `structuredHours.${fieldSuffix}` : 'structuredHours';
+      errors[altKey] = message;
+    } else if (prefix === 'structuredHours') {
+      const altKey = fieldSuffix ? `openingHours.${fieldSuffix}` : 'openingHours';
+      errors[altKey] = message;
+    }
+  };
+
   if (!hours || typeof hours !== 'object') {
-    errors[prefix] = 'Operating hours schedule is required.';
+    setScheduleError('', 'Operating hours schedule is required.');
     return errors;
   }
 
@@ -159,7 +192,7 @@ export function validateWeeklyHoursSchedule(
   for (const day of DAYS_OF_WEEK) {
     const daySchedule = hoursObj[day];
     if (!daySchedule || typeof daySchedule !== 'object') {
-      errors[`${prefix}.${day}`] = `Schedule for ${day} is missing.`;
+      setScheduleError(day, `Schedule for ${day} is missing.`);
       continue;
     }
 
@@ -176,20 +209,20 @@ export function validateWeeklyHoursSchedule(
         const dayLabel = day.charAt(0).toUpperCase() + day.slice(1);
 
         if (!openTime) {
-          errors[`${prefix}.${day}.openTime`] = `Please specify opening time for ${dayLabel}.`;
+          setScheduleError(`${day}.openTime`, `Please specify opening time for ${dayLabel}.`);
         } else if (!TIME_FORMAT_REGEX.test(openTime)) {
-          errors[`${prefix}.${day}.openTime`] = `Opening time for ${dayLabel} must be in 24-hour HH:mm format.`;
+          setScheduleError(`${day}.openTime`, `Opening time for ${dayLabel} must be in 24-hour HH:mm format.`);
         }
 
         if (!closeTime) {
-          errors[`${prefix}.${day}.closeTime`] = `Please specify closing time for ${dayLabel}.`;
+          setScheduleError(`${day}.closeTime`, `Please specify closing time for ${dayLabel}.`);
         } else if (!TIME_FORMAT_REGEX.test(closeTime)) {
-          errors[`${prefix}.${day}.closeTime`] = `Closing time for ${dayLabel} must be in 24-hour HH:mm format.`;
+          setScheduleError(`${day}.closeTime`, `Closing time for ${dayLabel} must be in 24-hour HH:mm format.`);
         }
 
         if (openTime && closeTime && TIME_FORMAT_REGEX.test(openTime) && TIME_FORMAT_REGEX.test(closeTime)) {
           if (closeTime <= openTime) {
-            errors[`${prefix}.${day}.closeTime`] = `Closing time must be later than opening time on ${dayLabel}.`;
+            setScheduleError(`${day}.closeTime`, `Closing time must be later than opening time on ${dayLabel}.`);
           }
         }
       }
@@ -197,7 +230,7 @@ export function validateWeeklyHoursSchedule(
   }
 
   if (!hasAtLeastOneOpenDay && Object.keys(errors).length === 0) {
-    errors[prefix] = 'At least one operating day must be marked open for patient access.';
+    setScheduleError('', 'At least one operating day must be marked open for patient access.');
   }
 
   return errors;

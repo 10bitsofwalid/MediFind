@@ -8,7 +8,12 @@ import {
   deletePharmacyApplicationHandler,
 } from '../controllers/pharmacyApplicationController';
 import {
-  syntheticVerifiedPharmacy,
+  getPharmacyProfileHandler,
+  updatePharmacyProfileHandler,
+  getOpeningHoursHandler,
+  updateOpeningHoursHandler,
+} from '../controllers/pharmacyController';
+import {
   syntheticStockItems,
   syntheticStockHistory,
 } from '../fixtures/syntheticFixtures';
@@ -41,13 +46,24 @@ router.delete('/pharmacy-applications/:applicationId', deletePharmacyApplication
 router.delete('/pharmacy-application', deletePharmacyApplicationHandler);
 
 // ==========================================
-// Existing Pharmacy Profile & Inventory Baseline
+// Pharmacy Profile & Opening Hours Operations
 // ==========================================
 
-// Read Pharmacy Profile (GET /owner/pharmacy)
-router.get('/pharmacy', (_req: Request, res: Response) => {
-  res.json(formatPharmacyResponse(syntheticVerifiedPharmacy, true));
-});
+// 1. Read Pharmacy Profile (GET /owner/pharmacy)
+router.get('/pharmacy', getPharmacyProfileHandler);
+
+// 2. Update Pharmacy Profile (PATCH /owner/pharmacy)
+router.patch('/pharmacy', updatePharmacyProfileHandler);
+
+// 3. Read Opening Hours (GET /owner/pharmacy/opening-hours)
+router.get('/pharmacy/opening-hours', getOpeningHoursHandler);
+
+// 4. Replace Opening Hours (PUT /owner/pharmacy/opening-hours)
+router.put('/pharmacy/opening-hours', updateOpeningHoursHandler);
+
+// ==========================================
+// Inventory Baseline
+// ==========================================
 
 // List Pharmacy Inventory (GET /owner/inventory)
 router.get('/inventory', (req: Request, res: Response) => {

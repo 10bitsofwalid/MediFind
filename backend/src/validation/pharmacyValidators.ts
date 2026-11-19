@@ -1,5 +1,6 @@
 // backend/src/validation/pharmacyValidators.ts
 import type {
+  LocationGeoJSON,
   PharmacyApplicationPayload,
   PharmacyProfileUpdatePayload,
 } from '../types/pharmacy';
@@ -187,6 +188,9 @@ export function validatePharmacyProfileUpdatePayload(
   if (data.licenseNo !== undefined) {
     fields.licenseNo = 'Drug licence number is protected and cannot be modified via standard profile update.';
   }
+  if (data.normalizedLicenseNo !== undefined) {
+    fields.normalizedLicenseNo = 'Drug licence number is protected and cannot be modified via standard profile update.';
+  }
   if (data.issuingAuthority !== undefined) {
     fields.issuingAuthority = 'Issuing authority is protected and cannot be modified via standard profile update.';
   }
@@ -248,13 +252,31 @@ export function validatePharmacyProfileUpdatePayload(
   }
 
   // Operating Hours
-  if (data.structuredHours !== undefined) {
-    const hoursErrors = validateWeeklyHoursSchedule(data.structuredHours, 'openingHours');
+  const structured = data.structuredHours !== undefined
+    ? data.structuredHours
+    : (data.openingHours && typeof data.openingHours === 'object' ? data.openingHours : undefined);
+
+  if (structured !== undefined) {
+    const hoursErrors = validateWeeklyHoursSchedule(structured, 'structuredHours');
     Object.assign(fields, hoursErrors);
   }
 
   if (Object.keys(fields).length > 0) {
     throw new ValidationError('Please review the highlighted fields.', fields);
+  }
+
+  let lat = typeof data.latitude === 'number' ? data.latitude : data.latitude ? Number(data.latitude) : undefined;
+  let lng = typeof data.longitude === 'number' ? data.longitude : data.longitude ? Number(data.longitude) : undefined;
+  let location = data.location as LocationGeoJSON | undefined;
+
+  if (location && Array.isArray(location.coordinates) && location.coordinates.length >= 2) {
+    if (lng === undefined) lng = Number(location.coordinates[0]);
+    if (lat === undefined) lat = Number(location.coordinates[1]);
+  } else if (lat !== undefined && lng !== undefined) {
+    location = {
+      type: 'Point',
+      coordinates: [lng, lat],
+    };
   }
 
   return {
@@ -268,10 +290,10 @@ export function validatePharmacyProfileUpdatePayload(
     postalCode: typeof data.postalCode === 'string' ? data.postalCode.trim() : undefined,
     formattedAddress: typeof data.formattedAddress === 'string' ? data.formattedAddress.trim() : undefined,
     address: typeof data.address === 'string' ? data.address.trim() : undefined,
-    latitude: typeof data.latitude === 'number' ? data.latitude : data.latitude ? Number(data.latitude) : undefined,
-    longitude: typeof data.longitude === 'number' ? data.longitude : data.longitude ? Number(data.longitude) : undefined,
-    location: data.location as any,
+    latitude: lat,
+    longitude: lng,
+    location,
     openingHours: typeof data.openingHours === 'string' ? data.openingHours.trim() : undefined,
-    structuredHours: data.structuredHours as any,
+    structuredHours: structured as any,
   };
 }
