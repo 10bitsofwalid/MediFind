@@ -3,13 +3,13 @@ import mongoose, { Document, Model, Schema, Types } from 'mongoose';
 import type { StockStatus } from '../types/pharmacy';
 
 export interface IStock extends Document {
-  pharmacyId: Types.ObjectId;
-  medicineId: Types.ObjectId;
+  pharmacyId: Types.ObjectId | string;
+  medicineId: Types.ObjectId | string;
   status: StockStatus;
   quantity?: number;
   price?: number;
   notes?: string;
-  updatedBy?: Types.ObjectId | null;
+  updatedBy?: Types.ObjectId | string | null;
   updatedByName?: string | null;
   updatedAt: Date;
   createdAt: Date;
@@ -18,12 +18,12 @@ export interface IStock extends Document {
 export const StockSchema = new Schema<IStock>(
   {
     pharmacyId: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'Pharmacy',
       required: true,
     },
     medicineId: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'Medicine',
       required: true,
     },
@@ -50,7 +50,7 @@ export const StockSchema = new Schema<IStock>(
       trim: true,
     },
     updatedBy: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'User',
       default: null,
     },

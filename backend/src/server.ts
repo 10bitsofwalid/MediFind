@@ -8,12 +8,7 @@ import { isValidationError } from './validation/validationError';
 import { AuthorizationError } from './auth/ownership';
 import { ApplicationError } from './utils/errors';
 import ownerRouter from './routes/ownerRoutes';
-import {
-  syntheticMedicines,
-} from './fixtures/syntheticFixtures';
-import {
-  wrapEnvelope,
-} from './utils/responseEnvelope';
+import { getMedicinesHandler } from './controllers/stockController';
 
 // Load environment variables
 dotenv.config();
@@ -63,28 +58,9 @@ app.get('/api/health', (_req: Request, res: Response) => {
   });
 });
 
-// Curated Catalogue Search Endpoint (GET /api/medicines)
-app.get('/api/medicines', (req: Request, res: Response) => {
-  const query = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
-  const form = typeof req.query.form === 'string' ? req.query.form.trim().toLowerCase() : '';
-
-  let results = syntheticMedicines.filter((m) => m.active);
-
-  if (query) {
-    results = results.filter(
-      (m) =>
-        m.name.toLowerCase().includes(query) ||
-        m.genericName.toLowerCase().includes(query) ||
-        m.strength.toLowerCase().includes(query)
-    );
-  }
-
-  if (form) {
-    results = results.filter((m) => m.form.toLowerCase() === form);
-  }
-
-  res.json(wrapEnvelope(results));
-});
+// Curated Catalogue Search Endpoints (GET /medicines and GET /api/medicines)
+app.get('/medicines', getMedicinesHandler);
+app.get('/api/medicines', getMedicinesHandler);
 
 // Pharmacy Owner Operations Namespace (/api/owner and /owner)
 app.use('/api/owner', ownerRouter);

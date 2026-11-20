@@ -14,13 +14,15 @@ import {
   updateOpeningHoursHandler,
 } from '../controllers/pharmacyController';
 import {
-  syntheticStockItems,
+  getOwnerInventoryHandler,
+  getOwnerInventoryItemHandler,
+  addOwnerInventoryItemHandler,
+} from '../controllers/stockController';
+import {
   syntheticStockHistory,
 } from '../fixtures/syntheticFixtures';
 import {
-  formatPharmacyResponse,
   formatStockHistoryResponse,
-  wrapEnvelope,
 } from '../utils/responseEnvelope';
 
 const router = Router();
@@ -62,34 +64,21 @@ router.get('/pharmacy/opening-hours', getOpeningHoursHandler);
 router.put('/pharmacy/opening-hours', updateOpeningHoursHandler);
 
 // ==========================================
-// Inventory Baseline
+// Pharmacy Inventory Operations
 // ==========================================
 
-// List Pharmacy Inventory (GET /owner/inventory)
-router.get('/inventory', (req: Request, res: Response) => {
-  const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
-  const status = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
+// 1. List Pharmacy Inventory (GET /owner/inventory)
+router.get('/inventory', getOwnerInventoryHandler);
 
-  let items = syntheticStockItems;
+// 2. Add Catalogue Medicine to Pharmacy Inventory (POST /owner/inventory)
+router.post('/inventory', addOwnerInventoryItemHandler);
 
-  if (q) {
-    items = items.filter(
-      (item) =>
-        item.medicineName.toLowerCase().includes(q) ||
-        item.genericName.toLowerCase().includes(q)
-    );
-  }
-
-  if (status && status !== 'all') {
-    items = items.filter((item) => item.status === status);
-  }
-
-  res.json(wrapEnvelope(items));
-});
-
-// Read Stock Item History (GET /owner/inventory/:stockId/history)
+// 3. Read Stock Item History (GET /owner/inventory/:stockId/history)
 router.get('/inventory/:stockId/history', (_req: Request, res: Response) => {
   res.json(formatStockHistoryResponse(syntheticStockHistory, { limit: 20, nextCursor: null }, true));
 });
+
+// 4. Read Single Stock Item (GET /owner/inventory/:stockId)
+router.get('/inventory/:stockId', getOwnerInventoryItemHandler);
 
 export default router;

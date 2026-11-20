@@ -46,6 +46,12 @@ export {
 } from './models/Pharmacy';
 
 export {
+  Medicine as MedicineModel,
+  MedicineSchema,
+  IMedicine,
+} from './models/Medicine';
+
+export {
   Stock,
   StockSchema,
   IStock,
@@ -67,6 +73,10 @@ export * from './middleware/authMiddleware';
 // Pharmacy Application Service & Routes
 export * from './services/pharmacyApplicationService';
 export * from './controllers/pharmacyApplicationController';
+export * from './services/pharmacyService';
+export * from './controllers/pharmacyController';
+export * from './services/stockService';
+export * from './controllers/stockController';
 export { default as ownerRoutes } from './routes/ownerRoutes';
 
 // Synthetic Fixtures

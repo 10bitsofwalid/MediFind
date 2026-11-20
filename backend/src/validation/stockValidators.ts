@@ -126,7 +126,12 @@ export function validateAddInventoryPayload(payload: unknown): AddInventoryMedic
   }
 
   if (Object.keys(fields).length > 0) {
-    const code = fields.medicineId ? 'MEDICINE_ID_REQUIRED' : 'VALIDATION_ERROR';
+    let code = 'VALIDATION_ERROR';
+    if (fields.medicineId) {
+      code = 'MEDICINE_ID_REQUIRED';
+    } else if (fields.status) {
+      code = 'INVALID_STATUS';
+    }
     const message = Object.values(fields)[0] || 'Please review the highlighted fields.';
     throw new ValidationError(message, fields, code);
   }

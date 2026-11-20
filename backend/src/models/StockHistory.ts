@@ -3,14 +3,14 @@ import mongoose, { Document, Model, Schema, Types } from 'mongoose';
 import type { StockStatus } from '../types/pharmacy';
 
 export interface IStockHistory extends Document {
-  stockId?: Types.ObjectId | null;
-  pharmacyId: Types.ObjectId;
-  medicineId: Types.ObjectId;
+  stockId?: Types.ObjectId | string | null;
+  pharmacyId: Types.ObjectId | string;
+  medicineId: Types.ObjectId | string;
   oldStatus: StockStatus | null;
   newStatus: StockStatus;
   oldQuantity?: number | null;
   newQuantity?: number | null;
-  changedBy?: Types.ObjectId | null;
+  changedBy?: Types.ObjectId | string | null;
   changedByName?: string | null;
   changedAt: Date;
 }
@@ -18,17 +18,17 @@ export interface IStockHistory extends Document {
 export const StockHistorySchema = new Schema<IStockHistory>(
   {
     stockId: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'Stock',
       default: null,
     },
     pharmacyId: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'Pharmacy',
       required: true,
     },
     medicineId: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'Medicine',
       required: true,
     },
@@ -51,7 +51,7 @@ export const StockHistorySchema = new Schema<IStockHistory>(
       default: null,
     },
     changedBy: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed,
       ref: 'User',
       default: null,
     },
