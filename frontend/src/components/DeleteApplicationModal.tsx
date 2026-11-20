@@ -118,7 +118,7 @@ export const DeleteApplicationModal: React.FC<DeleteApplicationModalProps> = ({
               fontSize: '14px',
               fontWeight: 600,
               border: '1px solid var(--color-border-default)',
-              backgroundColor: 'var(--color-surface-panel)',
+              backgroundColor: '#dbeafe',
               cursor: isDeleting ? 'not-allowed' : 'pointer',
             }}
           >
