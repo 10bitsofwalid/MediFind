@@ -19,7 +19,11 @@ export async function submitPharmacyApplicationHandler(
 ): Promise<void> {
   try {
     const ownerId = req.user!.userId;
-    const app = await submitApplication(ownerId, req.body);
+    const rawKey = req.headers['idempotency-key'] || req.headers['x-idempotency-key'] || req.body?.idempotencyKey;
+    const idempotencyKey = Array.isArray(rawKey) ? rawKey[0] : rawKey;
+    const app = await submitApplication(ownerId, req.body, {
+      idempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+    });
     res.status(201).json(formatApplicationResponse(app, true));
   } catch (err) {
     next(err);

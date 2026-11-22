@@ -758,3 +758,105 @@ test('Hardening failure scenarios: 403 denied, 429 rate limit, 500 server error,
     (err) => err instanceof StockServiceError && err.code === 'NETWORK_ERROR'
   );
 });
+
+test('Concurrency & Retries: If-Match, Idempotency-Key headers, and 409 conflict handling', async () => {
+  localStorageShim.setItem('token', 'valid_jwt');
+  receivedRequests.length = 0;
+
+  // 1. Pharmacy profile update sends If-Match when existing profile updatedAt is present
+  routeHandler = (req) => {
+    if (req.method === 'PATCH' && req.pathname === '/api/owner/pharmacy') {
+      assert.equal(req.headers['if-match'], '2026-11-20T10:00:00.000Z');
+      assert.equal(req.headers['idempotency-key'], 'idemp_prof_01');
+      return {
+        status: 200,
+        body: {
+          data: {
+            id: 'ph_200',
+            name: 'Updated Name',
+            status: 'verified',
+            updatedAt: '2026-11-20T10:05:00.000Z',
+          },
+        },
+      };
+    }
+    return { status: 404 };
+  };
+
+  const existingProfile = {
+    id: 'ph_200',
+    name: 'Old Name',
+    status: 'verified',
+    updatedAt: '2026-11-20T10:00:00.000Z',
+  };
+
+  const updatedProfile = await updatePharmacyProfile(
+    { name: 'Updated Name' },
+    existingProfile,
+    { idempotencyKey: 'idemp_prof_01' }
+  );
+  assert.equal(updatedProfile.name, 'Updated Name');
+
+  // 2. Profile update returning 409 CONFLICT is mapped cleanly
+  routeHandler = () => ({
+    status: 409,
+    body: {
+      error: {
+        code: 'CONFLICT',
+        message: 'This record was modified by another session.',
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => updatePharmacyProfile({ name: 'Conflict Name' }, existingProfile),
+    (err) => err instanceof PharmacyServiceError && err.status === 409 && err.code === 'CONFLICT'
+  );
+
+  // 3. Stock update sends If-Match and Idempotency-Key
+  routeHandler = (req) => {
+    if (req.method === 'PATCH' && req.pathname.startsWith('/api/owner/inventory/')) {
+      assert.equal(req.headers['if-match'], '2026-11-20T12:00:00.000Z');
+      assert.equal(req.headers['idempotency-key'], 'idemp_stock_01');
+      return {
+        status: 200,
+        body: {
+          data: {
+            stockId: 'stk_1',
+            status: 'low',
+            updatedAt: '2026-11-20T12:05:00.000Z',
+          },
+        },
+      };
+    }
+    return { status: 404 };
+  };
+
+  const stockUpdate = await stockService.updateStockStatus(
+    'ph_200',
+    'stk_1',
+    'low',
+    10,
+    { expectedUpdatedAt: '2026-11-20T12:00:00.000Z', idempotencyKey: 'idemp_stock_01' }
+  );
+  assert.equal(stockUpdate.status, 'low');
+
+  // 4. Stock update returning 409 CONFLICT maps to StockServiceError status 409
+  routeHandler = () => ({
+    status: 409,
+    body: {
+      error: {
+        code: 'CONFLICT',
+        message: 'Stock was updated elsewhere.',
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      stockService.updateStockStatus('ph_200', 'stk_1', 'out', 0, {
+        expectedUpdatedAt: '2026-11-20T12:00:00.000Z',
+      }),
+    (err) => err instanceof StockServiceError && err.status === 409 && err.code === 'CONFLICT'
+  );
+});

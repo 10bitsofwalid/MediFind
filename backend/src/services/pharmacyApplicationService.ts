@@ -13,6 +13,11 @@ import { normalizeLicenseNo } from '../validation/commonValidators';
 import { validatePharmacyApplicationPayload } from '../validation/pharmacyValidators';
 import { sanitizeClientPayload } from '../auth/ownership';
 import { ApplicationError } from '../utils/errors';
+import {
+  getIdempotentResponse,
+  recordIdempotentResponse,
+} from '../utils/idempotency';
+import { formatApplicationResponse } from '../utils/responseEnvelope';
 
 // In-memory store for development fallback when MongoDB is not connected
 const inMemoryApplications = new Map<string, IPharmacyApplication>();
@@ -143,8 +148,17 @@ export async function findDuplicateLicense(
  */
 export async function submitApplication(
   ownerId: string,
-  rawPayload: unknown
+  rawPayload: unknown,
+  options?: { idempotencyKey?: string }
 ): Promise<IPharmacyApplication> {
+  const idempotencyKey = options?.idempotencyKey;
+  if (idempotencyKey) {
+    const cached = getIdempotentResponse(ownerId, idempotencyKey);
+    if (cached) {
+      return cached.body?.data || cached.body;
+    }
+  }
+
   // 1. Sanitize: Strip untrusted client identity & status fields
   const sanitized = sanitizeClientPayload((rawPayload || {}) as Record<string, unknown>);
 
@@ -183,6 +197,14 @@ export async function submitApplication(
     }
 
     if (existingApp.status === 'pending') {
+      // If this is an idempotent re-submission of the same application (e.g. timeout retry)
+      if (idempotencyKey || existingApp.normalizedLicenseNo === normalizedLicense) {
+        if (idempotencyKey) {
+          recordIdempotentResponse(ownerId, idempotencyKey, 200, formatApplicationResponse(existingApp, true));
+        }
+        return existingApp;
+      }
+
       throw new ApplicationError(
         'You already have a pharmacy application pending administrator review. You can withdraw or update your pending application.',
         'ACTIVE_APPLICATION_EXISTS',
@@ -208,6 +230,10 @@ export async function submitApplication(
       } else {
         inMemoryApplications.set(String(existingApp._id), existingApp);
       }
+
+      if (idempotencyKey) {
+        recordIdempotentResponse(ownerId, idempotencyKey, 200, formatApplicationResponse(existingApp, true));
+      }
       return existingApp;
     }
   }
@@ -227,6 +253,10 @@ export async function submitApplication(
     await newApp.save();
   } else {
     inMemoryApplications.set(String(newApp._id), newApp);
+  }
+
+  if (idempotencyKey) {
+    recordIdempotentResponse(ownerId, idempotencyKey, 201, formatApplicationResponse(newApp, true));
   }
 
   return newApp;

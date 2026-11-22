@@ -30,6 +30,11 @@ export type ServerStockUpdate = Partial<StockInventoryRecord> & {
   updatedAt: string;
 };
 
+export interface StockMutationOptions {
+  expectedUpdatedAt?: string;
+  idempotencyKey?: string;
+}
+
 export class StockServiceError extends Error {
   code?: string;
   status?: number;
@@ -63,8 +68,8 @@ function mapAxiosStockError(err: unknown, fallbackMessage: string): StockService
       typeof errorPayload?.message === 'string' && errorPayload.message.trim()
         ? errorPayload.message.trim()
         : typeof responseData?.message === 'string' && responseData.message.trim()
-        ? responseData.message.trim()
-        : undefined;
+          ? responseData.message.trim()
+          : undefined;
     const code = typeof errorPayload?.code === 'string' ? errorPayload.code : undefined;
     const fields =
       errorPayload?.fields && typeof errorPayload.fields === 'object'
@@ -100,7 +105,7 @@ function mapAxiosStockError(err: unknown, fallbackMessage: string): StockService
     if (httpStatus === 403) {
       return new StockServiceError(
         serverMessage ||
-          'You do not have permission to access or update this pharmacy inventory. Verify your pharmacy status or account permissions.',
+        'You do not have permission to access or update this pharmacy inventory. Verify your pharmacy status or account permissions.',
         code || 'FORBIDDEN',
         403,
         fields
@@ -117,7 +122,7 @@ function mapAxiosStockError(err: unknown, fallbackMessage: string): StockService
     if (httpStatus === 409) {
       return new StockServiceError(
         serverMessage ||
-          'This item conflicts with an existing record or was updated elsewhere. Refresh and try again.',
+        'This item conflicts with an existing record or was updated elsewhere. Refresh and try again.',
         code || 'CONFLICT',
         409,
         fields
@@ -306,10 +311,10 @@ function normalizeServerStockUpdate(raw: unknown): ServerStockUpdate {
     typeof obj.stockId === 'string' && obj.stockId.trim()
       ? obj.stockId.trim()
       : typeof obj.id === 'string' && obj.id.trim()
-      ? obj.id.trim()
-      : typeof obj._id === 'string' && obj._id.trim()
-      ? obj._id.trim()
-      : '';
+        ? obj.id.trim()
+        : typeof obj._id === 'string' && obj._id.trim()
+          ? obj._id.trim()
+          : '';
 
   const normalizedStatus = normalizeStockStatus(obj.status);
   if (!stockId || !normalizedStatus || !isValidIsoTimestamp(obj.updatedAt)) {
@@ -359,10 +364,10 @@ function normalizeServerInventoryRecord(
     typeof obj.stockId === 'string' && obj.stockId.trim()
       ? obj.stockId.trim()
       : typeof obj.id === 'string' && obj.id.trim()
-      ? obj.id.trim()
-      : typeof obj._id === 'string' && obj._id.trim()
-      ? obj._id.trim()
-      : '';
+        ? obj.id.trim()
+        : typeof obj._id === 'string' && obj._id.trim()
+          ? obj._id.trim()
+          : '';
   const status = normalizeStockStatus(obj.status);
   if (!stockId || !status) return null;
 
@@ -375,54 +380,54 @@ function normalizeServerInventoryRecord(
     typeof obj.medicineId === 'string' && obj.medicineId.trim()
       ? obj.medicineId.trim()
       : typeof nestedMed?.id === 'string' && nestedMed.id.trim()
-      ? nestedMed.id.trim()
-      : typeof nestedMed?._id === 'string' && nestedMed._id.trim()
-      ? nestedMed._id.trim()
-      : fallbackCatalogue?.medicineId || '';
+        ? nestedMed.id.trim()
+        : typeof nestedMed?._id === 'string' && nestedMed._id.trim()
+          ? nestedMed._id.trim()
+          : fallbackCatalogue?.medicineId || '';
 
   const medicineName =
     typeof obj.medicineName === 'string' && obj.medicineName.trim()
       ? obj.medicineName.trim()
       : typeof nestedMed?.name === 'string' && nestedMed.name.trim()
-      ? nestedMed.name.trim()
-      : typeof nestedMed?.brandName === 'string' && nestedMed.brandName.trim()
-      ? nestedMed.brandName.trim()
-      : fallbackCatalogue?.medicineName?.trim() || '';
+        ? nestedMed.name.trim()
+        : typeof nestedMed?.brandName === 'string' && nestedMed.brandName.trim()
+          ? nestedMed.brandName.trim()
+          : fallbackCatalogue?.medicineName?.trim() || '';
 
   const genericName =
     typeof obj.genericName === 'string' && obj.genericName.trim()
       ? obj.genericName.trim()
       : typeof nestedMed?.genericName === 'string' && nestedMed.genericName.trim()
-      ? nestedMed.genericName.trim()
-      : fallbackCatalogue?.genericName?.trim() || '';
+        ? nestedMed.genericName.trim()
+        : fallbackCatalogue?.genericName?.trim() || '';
 
   const strength =
     typeof obj.strength === 'string' && obj.strength.trim()
       ? obj.strength.trim()
       : typeof nestedMed?.strength === 'string' && nestedMed.strength.trim()
-      ? nestedMed.strength.trim()
-      : fallbackCatalogue?.strength?.trim() || '';
+        ? nestedMed.strength.trim()
+        : fallbackCatalogue?.strength?.trim() || '';
 
   const form =
     typeof obj.form === 'string' && obj.form.trim()
       ? obj.form.trim()
       : typeof nestedMed?.form === 'string' && nestedMed.form.trim()
-      ? nestedMed.form.trim()
-      : fallbackCatalogue?.form?.trim() || '';
+        ? nestedMed.form.trim()
+        : fallbackCatalogue?.form?.trim() || '';
 
   const manufacturer =
     typeof obj.manufacturer === 'string' && obj.manufacturer.trim()
       ? obj.manufacturer.trim()
       : typeof nestedMed?.manufacturer === 'string' && nestedMed.manufacturer.trim()
-      ? nestedMed.manufacturer.trim()
-      : fallbackCatalogue?.manufacturer?.trim() || undefined;
+        ? nestedMed.manufacturer.trim()
+        : fallbackCatalogue?.manufacturer?.trim() || undefined;
 
   const prescriptionRequired =
     typeof obj.prescriptionRequired === 'boolean'
       ? obj.prescriptionRequired
       : typeof nestedMed?.prescriptionRequired === 'boolean'
-      ? nestedMed.prescriptionRequired
-      : fallbackCatalogue?.prescriptionRequired;
+        ? nestedMed.prescriptionRequired
+        : fallbackCatalogue?.prescriptionRequired;
 
   const updatedAt = isValidIsoTimestamp(obj.updatedAt) ? obj.updatedAt : '';
 
@@ -478,21 +483,21 @@ function normalizeHistoryEntry(
     typeof obj.historyId === 'string' && obj.historyId.trim()
       ? obj.historyId.trim()
       : typeof obj.id === 'string' && obj.id.trim()
-      ? obj.id.trim()
-      : typeof obj._id === 'string' && obj._id.trim()
-      ? obj._id.trim()
-      : '';
+        ? obj.id.trim()
+        : typeof obj._id === 'string' && obj._id.trim()
+          ? obj._id.trim()
+          : '';
 
   const newStatus = normalizeStockStatus(obj.newStatus ?? obj.toStatus ?? obj.status);
   const changedAt = isValidIsoTimestamp(obj.changedAt)
     ? obj.changedAt
     : isValidIsoTimestamp(obj.timestamp)
-    ? obj.timestamp
-    : isValidIsoTimestamp(obj.updatedAt)
-    ? obj.updatedAt
-    : isValidIsoTimestamp(obj.createdAt)
-    ? obj.createdAt
-    : '';
+      ? obj.timestamp
+      : isValidIsoTimestamp(obj.updatedAt)
+        ? obj.updatedAt
+        : isValidIsoTimestamp(obj.createdAt)
+          ? obj.createdAt
+          : '';
 
   if (!historyId || !newStatus || !changedAt) return null;
 
@@ -507,8 +512,8 @@ function normalizeHistoryEntry(
     typeof obj.changedByName === 'string' && obj.changedByName.trim()
       ? obj.changedByName.trim()
       : typeof obj.actorName === 'string' && obj.actorName.trim()
-      ? obj.actorName.trim()
-      : null;
+        ? obj.actorName.trim()
+        : null;
 
   if (typeof obj.changedBy === 'string' && obj.changedBy.trim()) {
     changedBy = obj.changedBy.trim();
@@ -532,14 +537,14 @@ function normalizeHistoryEntry(
       typeof obj.oldQuantity === 'number' && Number.isFinite(obj.oldQuantity)
         ? obj.oldQuantity
         : obj.oldQuantity === null
-        ? null
-        : undefined,
+          ? null
+          : undefined,
     newQuantity:
       typeof obj.newQuantity === 'number' && Number.isFinite(obj.newQuantity)
         ? obj.newQuantity
         : obj.newQuantity === null
-        ? null
-        : undefined,
+          ? null
+          : undefined,
     changedBy,
     changedByName,
     changedAt,
@@ -633,7 +638,8 @@ export const stockService = {
 
   async addInventoryItem(
     pharmacyId: string,
-    payload: AddInventoryMedicinePayload
+    payload: AddInventoryMedicinePayload,
+    options?: StockMutationOptions
   ): Promise<StockInventoryRecord> {
     const medicineName = payload.medicineName.trim();
     const genericName = payload.genericName.trim();
@@ -721,15 +727,20 @@ export const stockService = {
     }
 
     try {
+      const headers: Record<string, string> = {};
+      if (options?.idempotencyKey) {
+        headers['Idempotency-Key'] = options.idempotencyKey;
+      }
       const requestBody: Record<string, unknown> = {
         medicineId: payload.medicineId,
         status: payload.status,
+        ...(options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
       };
       if (payload.quantity !== undefined) requestBody.quantity = payload.quantity;
       if (payload.price !== undefined) requestBody.price = payload.price;
       if (payload.notes?.trim()) requestBody.notes = payload.notes.trim();
 
-      const res = await api.post('/owner/inventory', requestBody);
+      const res = await api.post('/owner/inventory', requestBody, { headers });
       const rawCreated = res.data?.data ?? res.data;
       const normalized = normalizeServerInventoryRecord(rawCreated, pharmacyId, payload);
       if (!normalized || !normalized.updatedAt) {
@@ -748,7 +759,8 @@ export const stockService = {
   async updateInventoryItem(
     pharmacyId: string,
     stockId: string,
-    payload: UpdateInventoryMedicinePayload
+    payload: UpdateInventoryMedicinePayload,
+    options?: StockMutationOptions
   ): Promise<ServerStockUpdate> {
     if (payload.medicineName !== undefined && !payload.medicineName.trim()) {
       throw new StockServiceError('Medicine name cannot be empty.', 'VALIDATION_ERROR', 422, {
@@ -855,7 +867,19 @@ export const stockService = {
     }
 
     try {
-      const res = await api.patch(`/owner/inventory/${stockId}`, payload);
+      const headers: Record<string, string> = {};
+      if (options?.expectedUpdatedAt) {
+        headers['If-Match'] = options.expectedUpdatedAt;
+      }
+      if (options?.idempotencyKey) {
+        headers['Idempotency-Key'] = options.idempotencyKey;
+      }
+      const requestBody = {
+        ...payload,
+        ...(options?.expectedUpdatedAt ? { expectedUpdatedAt: options.expectedUpdatedAt } : {}),
+        ...(options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+      };
+      const res = await api.patch(`/owner/inventory/${stockId}`, requestBody, { headers });
       const updated = res.data?.data ?? res.data;
       return normalizeServerStockUpdate(updated);
     } catch (err: unknown) {
@@ -867,13 +891,14 @@ export const stockService = {
     pharmacyId: string,
     stockId: string,
     status: StockStatus,
-    quantity?: number | null
+    quantity?: number | null,
+    options?: StockMutationOptions
   ): Promise<ServerStockUpdate> {
     const patch: UpdateInventoryMedicinePayload = { status };
     if (quantity !== undefined) {
       patch.quantity = quantity;
     }
-    return this.updateInventoryItem(pharmacyId, stockId, patch);
+    return this.updateInventoryItem(pharmacyId, stockId, patch, options);
   },
 
   /**
@@ -885,7 +910,8 @@ export const stockService = {
   async reconfirmStockItem(
     pharmacyId: string,
     stockId: string,
-    payload?: ReconfirmStockPayload
+    payload?: ReconfirmStockPayload,
+    options?: StockMutationOptions
   ): Promise<ServerStockUpdate> {
     if (payload?.status !== undefined) {
       validateOwnerWritableStatus(payload.status);
@@ -946,11 +972,20 @@ export const stockService = {
     }
 
     try {
+      const headers: Record<string, string> = {};
+      if (options?.expectedUpdatedAt) {
+        headers['If-Match'] = options.expectedUpdatedAt;
+      }
+      if (options?.idempotencyKey) {
+        headers['Idempotency-Key'] = options.idempotencyKey;
+      }
       const body: Record<string, unknown> = {};
       if (payload?.status !== undefined) body.status = payload.status;
       if (payload && 'quantity' in payload) body.quantity = payload.quantity;
+      if (options?.expectedUpdatedAt) body.expectedUpdatedAt = options.expectedUpdatedAt;
+      if (options?.idempotencyKey) body.idempotencyKey = options.idempotencyKey;
 
-      const res = await api.post(`/owner/inventory/${stockId}/reconfirm`, body);
+      const res = await api.post(`/owner/inventory/${stockId}/reconfirm`, body, { headers });
       const updated = res.data?.data ?? res.data;
       return normalizeServerStockUpdate(updated);
     } catch (err: unknown) {
@@ -959,7 +994,7 @@ export const stockService = {
         (err.response?.status === 404 || err.response?.status === 405 || err.response?.status === 501) &&
         payload?.status
       ) {
-        return this.updateStockStatus(pharmacyId, stockId, payload.status, payload.quantity);
+        return this.updateStockStatus(pharmacyId, stockId, payload.status, payload.quantity, options);
       }
       throw mapAxiosStockError(err, 'Failed to reconfirm stock availability.');
     }
@@ -983,13 +1018,13 @@ export const stockService = {
       const rawAttention = Array.isArray(obj.attentionItems)
         ? obj.attentionItems
         : Array.isArray(obj.staleItems)
-        ? obj.staleItems
-        : undefined;
+          ? obj.staleItems
+          : undefined;
 
       const attentionItems = rawAttention
         ? rawAttention
-            .map((entry) => normalizeServerInventoryRecord(entry, pharmacyId))
-            .filter((entry): entry is StockInventoryRecord => Boolean(entry))
+          .map((entry) => normalizeServerInventoryRecord(entry, pharmacyId))
+          .filter((entry): entry is StockInventoryRecord => Boolean(entry))
         : undefined;
 
       return {
@@ -1071,15 +1106,15 @@ export const stockService = {
       const page =
         pageRaw && typeof pageRaw === 'object'
           ? {
-              limit:
-                typeof pageRaw.limit === 'number'
-                  ? pageRaw.limit
-                  : options?.limit ?? normalized.length,
-              nextCursor:
-                typeof pageRaw.nextCursor === 'string' && pageRaw.nextCursor.trim()
-                  ? pageRaw.nextCursor
-                  : null,
-            }
+            limit:
+              typeof pageRaw.limit === 'number'
+                ? pageRaw.limit
+                : options?.limit ?? normalized.length,
+            nextCursor:
+              typeof pageRaw.nextCursor === 'string' && pageRaw.nextCursor.trim()
+                ? pageRaw.nextCursor
+                : null,
+          }
           : undefined;
 
       return { data: normalized, page };
@@ -1141,16 +1176,16 @@ export const stockService = {
           typeof obj.id === 'string' && obj.id.trim()
             ? obj.id.trim()
             : typeof obj._id === 'string' && obj._id.trim()
-            ? obj._id.trim()
-            : typeof obj.medicineId === 'string' && obj.medicineId.trim()
-            ? obj.medicineId.trim()
-            : '';
+              ? obj._id.trim()
+              : typeof obj.medicineId === 'string' && obj.medicineId.trim()
+                ? obj.medicineId.trim()
+                : '';
         const name =
           typeof obj.name === 'string' && obj.name.trim()
             ? obj.name.trim()
             : typeof obj.brandName === 'string' && obj.brandName.trim()
-            ? obj.brandName.trim()
-            : '';
+              ? obj.brandName.trim()
+              : '';
         const genericName =
           typeof obj.genericName === 'string' && obj.genericName.trim()
             ? obj.genericName.trim()
@@ -1161,8 +1196,8 @@ export const stockService = {
           typeof obj.form === 'string' && obj.form.trim()
             ? obj.form.trim()
             : typeof obj.dosageForm === 'string' && obj.dosageForm.trim()
-            ? obj.dosageForm.trim()
-            : '';
+              ? obj.dosageForm.trim()
+              : '';
 
         if (!id || !name) continue;
         normalized.push({

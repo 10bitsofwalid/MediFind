@@ -663,7 +663,8 @@ export function validateWeeklyHours(hours: WeeklyHours | undefined | null): stri
  *   with an authoritative 'pending' status, never 'verified'.
  */
 export async function submitPharmacyApplication(
-  payload: PharmacyApplicationPayload
+  payload: PharmacyApplicationPayload,
+  options?: { idempotencyKey?: string }
 ): Promise<PharmacyApplicationResponse> {
   if (isMockApiEnabled()) {
     // Development Mock Adapter - simulates server-authoritative persistence
@@ -696,7 +697,18 @@ export async function submitPharmacyApplication(
 
   // Real backend API invocation
   try {
-    const response = await api.post('/owner/pharmacy-applications', payload);
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
+    const response = await api.post(
+      '/owner/pharmacy-applications',
+      {
+        ...payload,
+        ...(options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+      },
+      { headers }
+    );
     const normalized = normalizeApplicationResponse(response.data, payload);
     if (!normalized) {
       throw new PharmacyServiceError(
@@ -927,6 +939,11 @@ export async function getPharmacyProfile(): Promise<Pharmacy | null> {
   }
 }
 
+export interface PharmacyUpdateOptions {
+  idempotencyKey?: string;
+  expectedUpdatedAt?: string;
+}
+
 /**
  * Updates the owner's pharmacy profile fields.
  * Endpoints: PATCH /owner/pharmacy and (when structuredHours is supplied) PUT /owner/pharmacy/opening-hours
@@ -936,7 +953,8 @@ export async function getPharmacyProfile(): Promise<Pharmacy | null> {
  */
 export async function updatePharmacyProfile(
   payload: PharmacyProfileUpdatePayload,
-  existingProfile?: Pharmacy | null
+  existingProfile?: Pharmacy | null,
+  options?: PharmacyUpdateOptions
 ): Promise<Pharmacy> {
   // Client-side field validation before submission
   const fieldErrors: Record<string, string> = {};
@@ -1110,7 +1128,24 @@ export async function updatePharmacyProfile(
 
   // Real backend API invocation
   try {
-    const response = await api.patch('/owner/pharmacy', payload);
+    const headers: Record<string, string> = {};
+    const expectedUpdatedAt = options?.expectedUpdatedAt || existingProfile?.updatedAt;
+    if (expectedUpdatedAt) {
+      headers['If-Match'] = expectedUpdatedAt;
+    }
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
+
+    const response = await api.patch(
+      '/owner/pharmacy',
+      {
+        ...payload,
+        ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+        ...(options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+      },
+      { headers }
+    );
     const updated = normalizePharmacyRecord(response.data, existingProfile);
     if (!updated) {
       throw new PharmacyServiceError('Server returned invalid profile update response.', 'INVALID_RESPONSE', 502);

@@ -38,7 +38,17 @@ export async function updatePharmacyProfileHandler(
 ): Promise<void> {
   try {
     const ownerId = req.user!.userId;
-    const updatedPharmacy = await updatePharmacyProfile(ownerId, req.body);
+    const ifMatch = req.headers['if-match'];
+    const rawExpected = ifMatch || req.body?.expectedUpdatedAt || req.body?.updatedAt;
+    const expectedUpdatedAt = Array.isArray(rawExpected) ? rawExpected[0] : rawExpected;
+
+    const rawIdemp = req.headers['idempotency-key'] || req.headers['x-idempotency-key'] || req.body?.idempotencyKey;
+    const idempotencyKey = Array.isArray(rawIdemp) ? rawIdemp[0] : rawIdemp;
+
+    const updatedPharmacy = await updatePharmacyProfile(ownerId, req.body, {
+      expectedUpdatedAt: typeof expectedUpdatedAt === 'string' ? expectedUpdatedAt : undefined,
+      idempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+    });
     res.status(200).json(formatPharmacyResponse(updatedPharmacy, true));
   } catch (err) {
     next(err);

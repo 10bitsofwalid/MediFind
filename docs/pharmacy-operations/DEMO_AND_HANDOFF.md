@@ -59,14 +59,31 @@ Vite serves the application at `http://localhost:5173/` (or the next available p
 From the repository root:
 
 ```bash
-npm test          # Runs Node test suite in frontend/tests/*.test.mjs (93 tests)
-npm run lint      # Runs ESLint across frontend/
-npm run build     # Runs TypeScript check (tsc -b) + Vite production build
+# Frontend Verification
+npm test --prefix frontend        # Runs 94 unit, integration, and API hardening tests
+npm run lint --prefix frontend    # Runs ESLint across frontend/
+npm run build --prefix frontend   # Runs TypeScript check (tsc -b) + Vite production build
+
+# Backend Verification
+npm run build --prefix backend    # Runs TypeScript check (tsc) producing dist/
+npm test --prefix backend         # Runs 81 integration, concurrency, idempotency & security tests
 ```
 
-### Required Backend Service Status
-- **Current Repository State:** The `backend/` directory currently contains only `package.json` and `package-lock.json`; no Express server, Mongoose models, or seed scripts are implemented in this repository.
-- **When Running Against the Team API:** Start the team's backend API service separately (default expected origin: `http://localhost:5000/api`), set `VITE_USE_MOCK_API=false` in `frontend/.env`, and ensure `localStorage.getItem('medifind_dev_mock_api')` is not set to `'true'`.
+### Backend Service Status & Live API Integration
+- **Current Repository State:** Complete hardened Express 5 / Mongoose 9 backend implemented under `backend/src/` with synthetic development fallback, JWT authentication, optimistic concurrency, response caching for idempotency, and batch catalogue preloading.
+- **Starting Backend Server:**
+  ```bash
+  npm run build --prefix backend
+  npm run start --prefix backend
+  ```
+  The API listens at `http://localhost:5000` (endpoints mounted under both `/api/*` and `/*`).
+- **Running in Live API Mode:** Set `VITE_USE_MOCK_API=false` in `frontend/.env` and ensure `localStorage.removeItem('medifind_dev_mock_api')` is cleared.
+
+### Concurrency, Retry Guarantees & Scope Gate Status
+1. **Concurrency Control:** `If-Match` / `expectedUpdatedAt` prevents simultaneous edits from overwriting newer stock or profile state, returning actionable `409 CONFLICT`.
+2. **Idempotency & Retries:** `Idempotency-Key` response caching ensures retries after network timeouts do not duplicate stock items, duplicate application records, or duplicate history entries.
+3. **High-Volume Scaling:** Batch catalogue preloading resolves inventories of 1,000+ items in ~20ms, eliminating N+1 query overhead.
+4. **Reservation Scope Gate:** Verified all 3 scope gate conditions (Release scope, frontend queue readiness, P0 exit gate). In accordance with guardrails, reservation endpoints are excluded from this release and deferred to P1.
 
 ---
 

@@ -320,9 +320,14 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     }
 
     try {
-      const serverUpdate = await stockService.updateInventoryItem(pharmacyId, item.stockId, {
-        quantity: validation.value === undefined ? null : validation.value,
-      });
+      const serverUpdate = await stockService.updateInventoryItem(
+        pharmacyId,
+        item.stockId,
+        {
+          quantity: validation.value === undefined ? null : validation.value,
+        },
+        { expectedUpdatedAt: item.updatedAt }
+      );
       const merged = mergeServerStockRecord(item, serverUpdate);
       setInventory((prev) => prev.map((i) => (i.stockId === merged.stockId ? merged : i)));
       handleResetQuantityDraft(item.stockId);
@@ -387,10 +392,15 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     }
 
     try {
-      const serverUpdate = await stockService.reconfirmStockItem(pharmacyId, item.stockId, {
-        status: targetStatus,
-        quantity: item.quantity,
-      });
+      const serverUpdate = await stockService.reconfirmStockItem(
+        pharmacyId,
+        item.stockId,
+        {
+          status: targetStatus,
+          quantity: item.quantity,
+        },
+        { expectedUpdatedAt: item.updatedAt }
+      );
       const merged = mergeServerStockRecord(item, serverUpdate);
       setInventory((prev) => prev.map((i) => (i.stockId === merged.stockId ? merged : i)));
 
@@ -467,15 +477,21 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
       const shouldUseReconfirm =
         item.status === 'unverified' || (stale && item.status === newStatus && !qtyDirty);
       const serverUpdate = shouldUseReconfirm
-        ? await stockService.reconfirmStockItem(pharmacyId, item.stockId, {
-            status: newStatus,
-            quantity: quantityToSubmit,
-          })
+        ? await stockService.reconfirmStockItem(
+            pharmacyId,
+            item.stockId,
+            {
+              status: newStatus,
+              quantity: quantityToSubmit,
+            },
+            { expectedUpdatedAt: item.updatedAt }
+          )
         : await stockService.updateStockStatus(
             pharmacyId,
             item.stockId,
             newStatus,
-            quantityToSubmit
+            quantityToSubmit,
+            { expectedUpdatedAt: item.updatedAt }
           );
       const merged = mergeServerStockRecord(item, serverUpdate);
       setInventory((prev) => prev.map((i) => (i.stockId === merged.stockId ? merged : i)));
@@ -551,7 +567,12 @@ export const OneTapStockControl: React.FC<OneTapStockControlProps> = ({
     setSuccessMessage(null);
     setActionErrorMessage(null);
     const existing = inventory.find((i) => i.stockId === stockId);
-    const serverUpdate = await stockService.updateInventoryItem(pharmacyId, stockId, payload);
+    const serverUpdate = await stockService.updateInventoryItem(
+      pharmacyId,
+      stockId,
+      payload,
+      { expectedUpdatedAt: existing?.updatedAt }
+    );
     const merged = existing
       ? mergeServerStockRecord(existing, serverUpdate)
       : (serverUpdate as StockInventoryRecord);

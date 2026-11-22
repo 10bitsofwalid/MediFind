@@ -29,6 +29,11 @@ import {
   formatStockHistoryResponse,
 } from '../utils/responseEnvelope';
 import { isReportStale } from '../utils/freshness';
+import {
+  getIdempotentResponse,
+  recordIdempotentResponse,
+} from '../utils/idempotency';
+import { wrapEnvelope } from '../utils/responseEnvelope';
 import type { StockStatus } from '../types/pharmacy';
 import type {
   Medicine,
@@ -487,6 +492,47 @@ export async function getOwnerInventory(
     }
   }
 
+  // Pre-load medicines in batch to prevent N+1 query performance bottleneck
+  const missingMedIds = new Set<string>();
+  for (const item of rawItems) {
+    if (!item.medicineName || !item.genericName || !item.strength || !item.form) {
+      missingMedIds.add(String(item.medicineId));
+    }
+  }
+
+  const batchMedicines = new Map<string, Medicine>();
+  if (missingMedIds.size > 0) {
+    const idsArray = Array.from(missingMedIds);
+    if (isConnected()) {
+      const objectIds = idsArray
+        .filter((id) => Types.ObjectId.isValid(id))
+        .map((id) => new Types.ObjectId(id));
+      const foundDocs = await MedicineModel.find({
+        $or: [{ id: { $in: idsArray } }, { _id: { $in: objectIds } }],
+      }).lean();
+      for (const d of foundDocs as any[]) {
+        const mId = String(d.id || d._id);
+        batchMedicines.set(mId, {
+          id: mId,
+          name: d.name,
+          genericName: d.genericName,
+          form: d.form,
+          strength: d.strength,
+          manufacturer: d.manufacturer,
+          description: d.description,
+          prescriptionRequired: Boolean(d.prescriptionRequired),
+          active: d.active !== false,
+        });
+      }
+    }
+    for (const id of idsArray) {
+      if (!batchMedicines.has(id)) {
+        const med = await findMedicineById(id);
+        if (med) batchMedicines.set(id, med);
+      }
+    }
+  }
+
   // Enrich stock items with catalogue metadata and format records
   const enrichedList: StockInventoryRecord[] = [];
   for (const item of rawItems) {
@@ -504,7 +550,7 @@ export async function getOwnerInventory(
         active: true,
       };
     } else {
-      med = await findMedicineById(medId);
+      med = batchMedicines.get(medId) || (await findMedicineById(medId));
     }
 
     const formatted = formatStockRecord(item, med, false) as StockInventoryRecord;
@@ -715,8 +761,17 @@ export async function getOwnerInventoryItem(
 export async function addOwnerInventoryItem(
   ownerId: string,
   user: AuthenticatedUserContext,
-  rawPayload: unknown
+  rawPayload: unknown,
+  options?: { idempotencyKey?: string }
 ): Promise<StockInventoryRecord> {
+  const idempotencyKey = options?.idempotencyKey;
+  if (idempotencyKey) {
+    const cached = getIdempotentResponse(ownerId, idempotencyKey);
+    if (cached) {
+      return cached.body?.data || cached.body;
+    }
+  }
+
   // 1. Resolve pharmacy context from authenticated server owner
   const pharmacy = await findPharmacyByOwner(ownerId);
   if (!pharmacy) {
@@ -755,6 +810,7 @@ export async function addOwnerInventoryItem(
 
   // 6. Enforce compound unique constraint (pharmacyId, medicineId) -> 409 CONFLICT
   let duplicateExists = false;
+  let existingItemDoc: any = null;
   if (isConnected()) {
     const existing = await Stock.findOne({
       $or: [
@@ -764,17 +820,27 @@ export async function addOwnerInventoryItem(
           : []),
       ],
     }).lean();
-    if (existing) duplicateExists = true;
+    if (existing) {
+      duplicateExists = true;
+      existingItemDoc = existing;
+    }
   } else {
     for (const s of inMemoryStocks.values()) {
       if (String(s.pharmacyId) === pharmacyId && String(s.medicineId) === medicineId) {
         duplicateExists = true;
+        existingItemDoc = s;
         break;
       }
     }
   }
 
   if (duplicateExists) {
+    if (idempotencyKey && existingItemDoc) {
+      const existingFormatted = formatStockRecord(existingItemDoc, medicine, false) as StockInventoryRecord;
+      recordIdempotentResponse(ownerId, idempotencyKey, 201, wrapEnvelope(existingFormatted));
+      return existingFormatted;
+    }
+
     throw new ApplicationError(
       'This medicine is already in your pharmacy inventory. Update its existing row instead.',
       'CONFLICT',
@@ -853,7 +919,11 @@ export async function addOwnerInventoryItem(
   }
 
   // 10. Format and return saved record
-  return formatStockRecord(newStockRecord, medicine, false) as StockInventoryRecord;
+  const result = formatStockRecord(newStockRecord, medicine, false) as StockInventoryRecord;
+  if (idempotencyKey) {
+    recordIdempotentResponse(ownerId, idempotencyKey, 201, wrapEnvelope(result));
+  }
+  return result;
 }
 
 /**
@@ -870,8 +940,17 @@ export async function updateOwnerInventoryItem(
   ownerId: string,
   user: AuthenticatedUserContext,
   stockId: string,
-  rawPayload: unknown
+  rawPayload: unknown,
+  options?: { expectedUpdatedAt?: string; idempotencyKey?: string }
 ): Promise<ServerStockUpdate> {
+  const idempotencyKey = options?.idempotencyKey;
+  if (idempotencyKey) {
+    const cached = getIdempotentResponse(ownerId, idempotencyKey);
+    if (cached) {
+      return cached.body?.data || cached.body;
+    }
+  }
+
   // 1. Resolve pharmacy and assert ownership & verified status
   const pharmacy = await findPharmacyByOwner(ownerId);
   if (!pharmacy) {
@@ -893,6 +972,25 @@ export async function updateOwnerInventoryItem(
       'NOT_FOUND',
       404
     );
+  }
+
+  // Concurrency check: If client supplied concurrency token (If-Match or expectedUpdatedAt/updatedAt), verify match
+  const rawToken =
+    options?.expectedUpdatedAt ||
+    (rawPayload as any)?.expectedUpdatedAt ||
+    (rawPayload as any)?.updatedAt;
+  if (rawToken && typeof rawToken === 'string' && rawToken.trim()) {
+    const cleanToken = rawToken.trim().replace(/^["']|["']$/g, '');
+    const serverTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+    const clientTime = new Date(cleanToken).getTime();
+    if (!Number.isNaN(serverTime) && !Number.isNaN(clientTime) && serverTime !== clientTime) {
+      throw new ApplicationError(
+        'This item conflicts with an existing record or was updated elsewhere. Refresh and try again.',
+        'CONFLICT',
+        409,
+        { updatedAt: 'Stale state conflict.' }
+      );
+    }
   }
 
   // 3. Sanitize and validate payload
@@ -1062,7 +1160,11 @@ export async function updateOwnerInventoryItem(
     savedRecord = updatedStock;
   }
 
-  return formatServerStockUpdate(savedRecord, false) as ServerStockUpdate;
+  const result = formatServerStockUpdate(savedRecord, false) as ServerStockUpdate;
+  if (idempotencyKey) {
+    recordIdempotentResponse(ownerId, idempotencyKey, 200, wrapEnvelope(result));
+  }
+  return result;
 }
 
 /**
@@ -1077,8 +1179,17 @@ export async function reconfirmOwnerInventoryItem(
   ownerId: string,
   user: AuthenticatedUserContext,
   stockId: string,
-  rawPayload: unknown
+  rawPayload: unknown,
+  options?: { expectedUpdatedAt?: string; idempotencyKey?: string }
 ): Promise<ServerStockUpdate> {
+  const idempotencyKey = options?.idempotencyKey;
+  if (idempotencyKey) {
+    const cached = getIdempotentResponse(ownerId, idempotencyKey);
+    if (cached) {
+      return cached.body?.data || cached.body;
+    }
+  }
+
   // 1. Resolve pharmacy and assert ownership & verified status
   const pharmacy = await findPharmacyByOwner(ownerId);
   if (!pharmacy) {
@@ -1100,6 +1211,25 @@ export async function reconfirmOwnerInventoryItem(
       'NOT_FOUND',
       404
     );
+  }
+
+  // Concurrency check: If client supplied concurrency token (If-Match or expectedUpdatedAt/updatedAt), verify match
+  const rawToken =
+    options?.expectedUpdatedAt ||
+    (rawPayload as any)?.expectedUpdatedAt ||
+    (rawPayload as any)?.updatedAt;
+  if (rawToken && typeof rawToken === 'string' && rawToken.trim()) {
+    const cleanToken = rawToken.trim().replace(/^["']|["']$/g, '');
+    const serverTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+    const clientTime = new Date(cleanToken).getTime();
+    if (!Number.isNaN(serverTime) && !Number.isNaN(clientTime) && serverTime !== clientTime) {
+      throw new ApplicationError(
+        'This item conflicts with an existing record or was updated elsewhere. Refresh and try again.',
+        'CONFLICT',
+        409,
+        { updatedAt: 'Stale state conflict.' }
+      );
+    }
   }
 
   // 3. Sanitize and validate payload
@@ -1243,7 +1373,11 @@ export async function reconfirmOwnerInventoryItem(
     savedRecord = updatedStock;
   }
 
-  return formatServerStockUpdate(savedRecord, false) as ServerStockUpdate;
+  const result = formatServerStockUpdate(savedRecord, false) as ServerStockUpdate;
+  if (idempotencyKey) {
+    recordIdempotentResponse(ownerId, idempotencyKey, 200, wrapEnvelope(result));
+  }
+  return result;
 }
 
 /**

@@ -23,6 +23,11 @@ import { validatePharmacyProfileUpdatePayload } from '../validation/pharmacyVali
 import { sanitizeClientPayload, AuthorizationError } from '../auth/ownership';
 import { ApplicationError } from '../utils/errors';
 import { ValidationError } from '../validation/validationError';
+import {
+  getIdempotentResponse,
+  recordIdempotentResponse,
+} from '../utils/idempotency';
+import { formatPharmacyResponse } from '../utils/responseEnvelope';
 import type {
   LocationGeoJSON,
   Pharmacy as PharmacyType,
@@ -275,8 +280,17 @@ export async function getPharmacyProfile(ownerId: string): Promise<any> {
  */
 export async function updatePharmacyProfile(
   ownerId: string,
-  rawPayload: unknown
+  rawPayload: unknown,
+  options?: { expectedUpdatedAt?: string; idempotencyKey?: string }
 ): Promise<any> {
+  const idempotencyKey = options?.idempotencyKey;
+  if (idempotencyKey) {
+    const cached = getIdempotentResponse(ownerId, idempotencyKey);
+    if (cached) {
+      return cached.body?.data || cached.body;
+    }
+  }
+
   // 1. Sanitize: Strip untrusted client identity & status fields
   const sanitized = sanitizeClientPayload((rawPayload || {}) as Record<string, unknown>);
 
@@ -291,6 +305,22 @@ export async function updatePharmacyProfile(
       'NOT_FOUND',
       404
     );
+  }
+
+  // Concurrency check: If client supplied concurrency token (If-Match or expectedUpdatedAt/updatedAt), verify match
+  const rawToken = options?.expectedUpdatedAt || (rawPayload as any)?.expectedUpdatedAt || (rawPayload as any)?.updatedAt;
+  if (rawToken && typeof rawToken === 'string' && rawToken.trim()) {
+    const cleanToken = rawToken.trim().replace(/^["']|["']$/g, '');
+    const serverTime = pharmacy.updatedAt ? new Date(pharmacy.updatedAt).getTime() : 0;
+    const clientTime = new Date(cleanToken).getTime();
+    if (!Number.isNaN(serverTime) && !Number.isNaN(clientTime) && serverTime !== clientTime) {
+      throw new ApplicationError(
+        'This pharmacy record was updated elsewhere or conflicts with existing data. Refresh and try again.',
+        'CONFLICT',
+        409,
+        { updatedAt: 'Stale state conflict.' }
+      );
+    }
   }
 
   // 4. Verification state gatekeeping:
@@ -404,6 +434,10 @@ export async function updatePharmacyProfile(
     }
   } catch {
     // Non-blocking sync
+  }
+
+  if (idempotencyKey) {
+    recordIdempotentResponse(ownerId, idempotencyKey, 200, formatPharmacyResponse(pharmacy, true));
   }
 
   return pharmacy;

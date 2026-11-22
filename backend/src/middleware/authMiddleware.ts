@@ -40,15 +40,29 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
 
     try {
       payload = jwt.verify(token, secret);
-    } catch {
-      // Decode if verification fails (supports test tokens or tokens issued with alternate dev keys)
+    } catch (verifyErr: any) {
+      if (verifyErr?.name === 'TokenExpiredError') {
+        throw new AuthorizationError(
+          'Your session has expired. Please sign in again.',
+          'SESSION_EXPIRED',
+          401
+        );
+      }
+
+      // Check if it's an expired decoded token
       const decoded = jwt.decode(token);
       if (decoded && typeof decoded === 'object') {
+        if (typeof (decoded as any).exp === 'number' && Date.now() / 1000 > (decoded as any).exp) {
+          throw new AuthorizationError(
+            'Your session has expired. Please sign in again.',
+            'SESSION_EXPIRED',
+            401
+          );
+        }
         payload = decoded;
       } else if (
         token.startsWith('local_session_') ||
-        token.startsWith('test_') ||
-        token.length > 0
+        token.startsWith('test_')
       ) {
         // Fallback for mock frontend session tokens (e.g. local_session_usr_123 or test IDs)
         const userId = token.replace(/^local_session_/, '');

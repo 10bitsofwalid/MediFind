@@ -87,7 +87,12 @@ export async function addOwnerInventoryItemHandler(
   try {
     const ownerId = req.user!.userId;
     const user = req.user!;
-    const saved = await addOwnerInventoryItem(ownerId, user, req.body);
+    const rawIdemp = req.headers['idempotency-key'] || req.headers['x-idempotency-key'] || req.body?.idempotencyKey;
+    const idempotencyKey = Array.isArray(rawIdemp) ? rawIdemp[0] : rawIdemp;
+
+    const saved = await addOwnerInventoryItem(ownerId, user, req.body, {
+      idempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+    });
     res.status(201).json(wrapEnvelope(saved));
   } catch (err) {
     next(err);
@@ -108,7 +113,18 @@ export async function updateOwnerInventoryItemHandler(
     const ownerId = req.user!.userId;
     const user = req.user!;
     const stockId = Array.isArray(req.params.stockId) ? req.params.stockId[0] : req.params.stockId;
-    const updated = await updateOwnerInventoryItem(ownerId, user, String(stockId), req.body);
+
+    const ifMatch = req.headers['if-match'];
+    const rawExpected = ifMatch || req.body?.expectedUpdatedAt || req.body?.updatedAt;
+    const expectedUpdatedAt = Array.isArray(rawExpected) ? rawExpected[0] : rawExpected;
+
+    const rawIdemp = req.headers['idempotency-key'] || req.headers['x-idempotency-key'] || req.body?.idempotencyKey;
+    const idempotencyKey = Array.isArray(rawIdemp) ? rawIdemp[0] : rawIdemp;
+
+    const updated = await updateOwnerInventoryItem(ownerId, user, String(stockId), req.body, {
+      expectedUpdatedAt: typeof expectedUpdatedAt === 'string' ? expectedUpdatedAt : undefined,
+      idempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+    });
     res.status(200).json(wrapEnvelope(updated));
   } catch (err) {
     next(err);
@@ -129,7 +145,18 @@ export async function reconfirmOwnerInventoryItemHandler(
     const ownerId = req.user!.userId;
     const user = req.user!;
     const stockId = Array.isArray(req.params.stockId) ? req.params.stockId[0] : req.params.stockId;
-    const updated = await reconfirmOwnerInventoryItem(ownerId, user, String(stockId), req.body);
+
+    const ifMatch = req.headers['if-match'];
+    const rawExpected = ifMatch || req.body?.expectedUpdatedAt || req.body?.updatedAt;
+    const expectedUpdatedAt = Array.isArray(rawExpected) ? rawExpected[0] : rawExpected;
+
+    const rawIdemp = req.headers['idempotency-key'] || req.headers['x-idempotency-key'] || req.body?.idempotencyKey;
+    const idempotencyKey = Array.isArray(rawIdemp) ? rawIdemp[0] : rawIdemp;
+
+    const updated = await reconfirmOwnerInventoryItem(ownerId, user, String(stockId), req.body, {
+      expectedUpdatedAt: typeof expectedUpdatedAt === 'string' ? expectedUpdatedAt : undefined,
+      idempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+    });
     res.status(200).json(wrapEnvelope(updated));
   } catch (err) {
     next(err);

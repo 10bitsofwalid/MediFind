@@ -8,6 +8,9 @@ import { isValidationError } from './validation/validationError';
 import { AuthorizationError } from './auth/ownership';
 import { ApplicationError } from './utils/errors';
 import ownerRouter from './routes/ownerRoutes';
+import authRouter from './routes/authRoutes';
+import { requireAuth } from './middleware/authMiddleware';
+import { meHandler } from './controllers/authController';
 import { getMedicinesHandler } from './controllers/stockController';
 import {
   searchNearbyPharmaciesHandler,
@@ -84,6 +87,12 @@ app.get('/api/admin/settings/quality-thresholds', getQualityThresholdsHandler);
 app.patch('/admin/settings/quality-thresholds', updateQualityThresholdsHandler);
 app.patch('/api/admin/settings/quality-thresholds', updateQualityThresholdsHandler);
 
+// Authentication & User Identity Endpoints (/api/auth and /auth, /api/me and /me)
+app.use('/auth', authRouter);
+app.use('/api/auth', authRouter);
+app.get('/me', requireAuth, meHandler);
+app.get('/api/me', requireAuth, meHandler);
+
 // Pharmacy Owner Operations Namespace (/api/owner and /owner)
 app.use('/api/owner', ownerRouter);
 app.use('/owner', ownerRouter);
@@ -100,6 +109,44 @@ app.use((req: Request, res: Response) => {
 
 // Global Normalized Error Handler (Field-level 422, Auth & Business rules envelopes)
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  // SyntaxError from express.json() for malformed JSON payloads
+  if (err instanceof SyntaxError && 'status' in err && (err as { status?: number }).status === 400) {
+    res.status(400).json({
+      error: {
+        code: 'INVALID_REQUEST',
+        message: 'Malformed JSON payload in request body.',
+      },
+    });
+    return;
+  }
+
+  // Mongo duplicate key error (E11000)
+  if (err && typeof err === 'object' && 'code' in err && (err as { code?: number }).code === 11000) {
+    res.status(409).json({
+      error: {
+        code: 'CONFLICT',
+        message: 'A duplicate record already exists in the system.',
+      },
+    });
+    return;
+  }
+
+  // Database outage or connection timeout
+  if (
+    err instanceof mongoose.Error &&
+    (err.name === 'MongooseServerSelectionError' ||
+      err.name === 'MongooseTimeoutError' ||
+      err.message.includes('buffering timed out'))
+  ) {
+    res.status(503).json({
+      error: {
+        code: 'DATABASE_ERROR',
+        message: 'Database service is temporarily unavailable. Please try again.',
+      },
+    });
+    return;
+  }
+
   if (isValidationError(err)) {
     res.status(err.status || 422).json(err.toJSON());
     return;
@@ -132,7 +179,14 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     return;
   }
 
-  const message = err instanceof Error ? err.message : 'An unexpected internal server error occurred.';
+  // Safe internal server error fallback: never leak stack traces or credentials
+  const message =
+    process.env.NODE_ENV === 'production'
+      ? 'An unexpected internal server error occurred.'
+      : err instanceof Error
+      ? err.message
+      : 'An unexpected internal server error occurred.';
+
   res.status(500).json({
     error: {
       code: 'SERVER_ERROR',
