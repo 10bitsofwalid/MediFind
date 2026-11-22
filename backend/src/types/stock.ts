@@ -82,7 +82,7 @@ export interface UpdateInventoryMedicinePayload {
   status?: StockStatus;
   quantity?: number | null;
   price?: number | null;
-  notes?: string;
+  notes?: string | null;
 }
 
 export interface ServerStockUpdate {
@@ -90,6 +90,8 @@ export interface ServerStockUpdate {
   status: StockStatus;
   updatedAt: string;
   quantity?: number;
+  price?: number;
+  notes?: string;
   isStale?: boolean;
   freshness?: 'fresh' | 'stale';
 }

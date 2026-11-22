@@ -75,6 +75,26 @@ export function validatePrice(price: unknown): number | undefined {
 }
 
 /**
+ * Validates and trims optional notes. Enforces a maximum length of 500 characters.
+ */
+export function validateNotes(notes: unknown): string | null | undefined {
+  if (notes === undefined) return undefined;
+  if (notes === null) return null;
+  if (typeof notes !== 'string') {
+    throw new ValidationError('Notes must be a string.', {
+      notes: 'Notes must be text.',
+    });
+  }
+  const trimmed = notes.trim();
+  if (trimmed.length > 500) {
+    throw new ValidationError('Notes cannot exceed 500 characters.', {
+      notes: 'Notes cannot exceed 500 characters.',
+    });
+  }
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
  * Validates payload for POST /owner/inventory (adding catalogue medicine to pharmacy inventory).
  */
 export function validateAddInventoryPayload(payload: unknown): AddInventoryMedicinePayload {
@@ -125,6 +145,18 @@ export function validateAddInventoryPayload(payload: unknown): AddInventoryMedic
     }
   }
 
+  let notes: string | undefined;
+  if (data.notes !== undefined && data.notes !== null && data.notes !== '') {
+    try {
+      const validatedNotes = validateNotes(data.notes);
+      notes = validatedNotes === null ? undefined : validatedNotes;
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        Object.assign(fields, err.fields);
+      }
+    }
+  }
+
   if (Object.keys(fields).length > 0) {
     let code = 'VALIDATION_ERROR';
     if (fields.medicineId) {
@@ -148,7 +180,7 @@ export function validateAddInventoryPayload(payload: unknown): AddInventoryMedic
     status,
     quantity,
     price,
-    notes: typeof data.notes === 'string' ? data.notes.trim() : undefined,
+    notes,
   };
 }
 
@@ -204,16 +236,28 @@ export function validateUpdateInventoryPayload(payload: unknown): UpdateInventor
     }
   }
 
+  let notes: string | null | undefined;
+  if (data.notes !== undefined) {
+    try {
+      notes = validateNotes(data.notes);
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        Object.assign(fields, err.fields);
+      }
+    }
+  }
+
   if (Object.keys(fields).length > 0) {
+    const code = fields.status ? 'INVALID_STATUS' : 'VALIDATION_ERROR';
     const message = Object.values(fields)[0] || 'Please review the highlighted fields.';
-    throw new ValidationError(message, fields);
+    throw new ValidationError(message, fields, code);
   }
 
   return {
     status,
     quantity,
     price,
-    notes: typeof data.notes === 'string' ? data.notes.trim() : undefined,
+    notes,
   };
 }
 
@@ -255,12 +299,52 @@ export function validateReconfirmStockPayload(payload: unknown): ReconfirmStockP
   }
 
   if (Object.keys(fields).length > 0) {
+    const code = fields.status ? 'INVALID_STATUS' : 'VALIDATION_ERROR';
     const message = Object.values(fields)[0] || 'Please review the highlighted fields.';
-    throw new ValidationError(message, fields);
+    throw new ValidationError(message, fields, code);
   }
 
   return {
     status,
     quantity,
   };
+}
+
+/**
+ * Validates query parameters for GET /owner/inventory/:stockId/history.
+ */
+export function validateStockHistoryQuery(query: unknown): { limit: number; cursor?: string } {
+  if (!query || typeof query !== 'object') {
+    return { limit: 20 };
+  }
+
+  const q = query as Record<string, unknown>;
+  const fields: Record<string, string> = {};
+
+  let limit = 20;
+  if (q.limit !== undefined && q.limit !== null && q.limit !== '') {
+    const num = Number(q.limit);
+    if (!Number.isFinite(num) || !Number.isInteger(num) || num < 1) {
+      fields.limit = 'Limit must be a positive whole number of 1 or greater.';
+    } else {
+      limit = Math.max(1, Math.min(num, 100));
+    }
+  }
+
+  let cursor: string | undefined;
+  if (q.cursor !== undefined && q.cursor !== null && q.cursor !== '') {
+    if (typeof q.cursor === 'string') {
+      const trimmed = q.cursor.trim();
+      if (trimmed) cursor = trimmed;
+    } else {
+      fields.cursor = 'Cursor must be a valid pagination string.';
+    }
+  }
+
+  if (Object.keys(fields).length > 0) {
+    const message = Object.values(fields)[0] || 'Invalid query parameters.';
+    throw new ValidationError(message, fields, 'VALIDATION_ERROR', 422);
+  }
+
+  return { limit, cursor };
 }

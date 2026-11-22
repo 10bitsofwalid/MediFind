@@ -17,13 +17,10 @@ import {
   getOwnerInventoryHandler,
   getOwnerInventoryItemHandler,
   addOwnerInventoryItemHandler,
+  updateOwnerInventoryItemHandler,
+  reconfirmOwnerInventoryItemHandler,
+  getOwnerStockHistoryHandler,
 } from '../controllers/stockController';
-import {
-  syntheticStockHistory,
-} from '../fixtures/syntheticFixtures';
-import {
-  formatStockHistoryResponse,
-} from '../utils/responseEnvelope';
 
 const router = Router();
 
@@ -74,11 +71,15 @@ router.get('/inventory', getOwnerInventoryHandler);
 router.post('/inventory', addOwnerInventoryItemHandler);
 
 // 3. Read Stock Item History (GET /owner/inventory/:stockId/history)
-router.get('/inventory/:stockId/history', (_req: Request, res: Response) => {
-  res.json(formatStockHistoryResponse(syntheticStockHistory, { limit: 20, nextCursor: null }, true));
-});
+router.get('/inventory/:stockId/history', getOwnerStockHistoryHandler);
 
-// 4. Read Single Stock Item (GET /owner/inventory/:stockId)
+// 4. Reconfirm Stock Availability (POST /owner/inventory/:stockId/reconfirm)
+router.post('/inventory/:stockId/reconfirm', reconfirmOwnerInventoryItemHandler);
+
+// 5. Update Stock Item (PATCH /owner/inventory/:stockId)
+router.patch('/inventory/:stockId', updateOwnerInventoryItemHandler);
+
+// 6. Read Single Stock Item (GET /owner/inventory/:stockId)
 router.get('/inventory/:stockId', getOwnerInventoryItemHandler);
 
 export default router;

@@ -3,6 +3,7 @@ import mongoose, { Document, Model, Schema, Types } from 'mongoose';
 import type { StockStatus } from '../types/pharmacy';
 
 export interface IStock extends Document {
+  stockId?: string;
   pharmacyId: Types.ObjectId | string;
   medicineId: Types.ObjectId | string;
   status: StockStatus;
@@ -17,6 +18,10 @@ export interface IStock extends Document {
 
 export const StockSchema = new Schema<IStock>(
   {
+    stockId: {
+      type: String,
+      trim: true,
+    },
     pharmacyId: {
       type: Schema.Types.Mixed,
       ref: 'Pharmacy',

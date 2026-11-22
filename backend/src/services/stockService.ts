@@ -13,16 +13,29 @@ import {
   assertPharmacyOwnership,
   assertPharmacyVerifiedForInventoryWrite,
   AuthenticatedUserContext,
+  sanitizeClientPayload,
 } from '../auth/ownership';
 import { ApplicationError } from '../utils/errors';
 import { ValidationError } from '../validation/validationError';
-import { validateAddInventoryPayload } from '../validation/stockValidators';
-import { formatStockRecord } from '../utils/responseEnvelope';
+import {
+  validateAddInventoryPayload,
+  validateUpdateInventoryPayload,
+  validateReconfirmStockPayload,
+  validateStockHistoryQuery,
+} from '../validation/stockValidators';
+import {
+  formatStockRecord,
+  formatServerStockUpdate,
+  formatStockHistoryResponse,
+} from '../utils/responseEnvelope';
 import { isReportStale } from '../utils/freshness';
+import type { StockStatus } from '../types/pharmacy';
 import type {
   Medicine,
   StockInventoryRecord,
   StockHistoryRecord,
+  ServerStockUpdate,
+  StockHistoryResponse,
 } from '../types/stock';
 
 // In-memory stores for development fallback and unit tests when MongoDB is offline
@@ -144,6 +157,149 @@ export async function seedStockItem(item: Partial<StockInventoryRecord> & { phar
 
   inMemoryStocks.set(stockId, record);
   return record;
+}
+
+let historyCounter = 0;
+
+/**
+ * Generates a monotonically increasing, unique stock history identifier.
+ */
+export function generateHistoryId(): string {
+  historyCounter += 1;
+  return `hist_${Date.now()}_${String(historyCounter).padStart(6, '0')}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/**
+ * Manually seeds a stock history record into active storage (for test setup).
+ */
+export async function seedStockHistory(entry: Partial<StockHistoryRecord> & {
+  pharmacyId: string;
+  medicineId: string;
+  stockId: string;
+  newStatus: StockStatus;
+}): Promise<any> {
+  const historyId = entry.historyId || generateHistoryId();
+  const changedAt = entry.changedAt ? new Date(entry.changedAt) : new Date();
+
+  const record: any = {
+    _id: historyId,
+    historyId,
+    stockId: entry.stockId,
+    pharmacyId: String(entry.pharmacyId),
+    medicineId: String(entry.medicineId),
+    oldStatus: entry.oldStatus ?? null,
+    newStatus: entry.newStatus,
+    oldQuantity: entry.oldQuantity ?? null,
+    newQuantity: entry.newQuantity ?? null,
+    changedBy: entry.changedBy || null,
+    changedByName: entry.changedByName || null,
+    changedAt,
+  };
+
+  if (isConnected()) {
+    const doc = new StockHistory({
+      ...record,
+      stockId: Types.ObjectId.isValid(entry.stockId) ? new Types.ObjectId(entry.stockId) : entry.stockId,
+      pharmacyId: Types.ObjectId.isValid(entry.pharmacyId) ? new Types.ObjectId(entry.pharmacyId) : entry.pharmacyId,
+      medicineId: Types.ObjectId.isValid(entry.medicineId) ? new Types.ObjectId(entry.medicineId) : entry.medicineId,
+    });
+    await doc.save();
+    return doc;
+  }
+
+  inMemoryStockHistory.set(historyId, record);
+  return record;
+}
+
+/**
+ * Encodes an ISO date and document ID into an opaque, URL-safe base64 pagination cursor.
+ */
+export function encodeCursor(changedAt: Date | string, id: string): string {
+  const t = changedAt instanceof Date ? changedAt.toISOString() : new Date(changedAt).toISOString();
+  return Buffer.from(JSON.stringify({ t, id: String(id) })).toString('base64url');
+}
+
+/**
+ * Decodes an opaque base64 pagination cursor into { t, id }. Supports both base64url and standard base64.
+ */
+export function decodeCursor(cursor: string): { t: string; id: string } | null {
+  try {
+    const raw = Buffer.from(cursor, 'base64url').toString('utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.t === 'string' && typeof parsed.id === 'string' && !Number.isNaN(new Date(parsed.t).getTime())) {
+      return parsed;
+    }
+  } catch {
+    // Try standard base64
+    try {
+      const raw = Buffer.from(cursor, 'base64').toString('utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.t === 'string' && typeof parsed.id === 'string' && !Number.isNaN(new Date(parsed.t).getTime())) {
+        return parsed;
+      }
+    } catch {
+      // not a base64 JSON cursor
+    }
+  }
+  return null;
+}
+
+/**
+ * Strips untrusted identity, tenant, and lifecycle fields from incoming stock payloads.
+ * Preserves stock availability status while protecting ownership, timestamps, and server actors.
+ */
+export function sanitizeClientStockPayload<T extends Record<string, unknown>>(payload: T): T {
+  const sanitized = { ...payload };
+  const forbiddenKeys = [
+    'ownerId',
+    'pharmacyId',
+    'medicineId',
+    'updatedBy',
+    'updatedByName',
+    'verificationStatus',
+    'verificationReason',
+    'decisionReason',
+    'nextStep',
+    'verifiedBy',
+    'verifiedAt',
+    'reviewedBy',
+    'reviewedAt',
+    '_id',
+    'id',
+    'createdAt',
+    'updatedAt',
+    'isStale',
+    'freshness',
+  ];
+  for (const key of forbiddenKeys) {
+    delete sanitized[key];
+  }
+  return sanitized;
+}
+
+/**
+ * Resolves a stock record by stockId from active storage (MongoDB or in-memory store).
+ */
+export async function findStockRecord(stockId: string): Promise<any | null> {
+  const targetId = String(stockId).trim();
+  if (!targetId) return null;
+
+  if (isConnected()) {
+    const doc = await Stock.findOne({
+      $or: [
+        { stockId: targetId },
+        ...(Types.ObjectId.isValid(targetId) ? [{ _id: new Types.ObjectId(targetId) }] : [{ _id: targetId }]),
+      ],
+    });
+    return doc;
+  }
+
+  for (const s of inMemoryStocks.values()) {
+    if (String(s.stockId) === targetId || String(s._id) === targetId) {
+      return s;
+    }
+  }
+  return null;
 }
 
 /**
@@ -567,7 +723,7 @@ export async function addOwnerInventoryItem(
   }
 
   // 9. Atomically record initial StockHistory entry
-  const historyId = `hist_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const historyId = generateHistoryId();
   const historyEntry: any = {
     _id: historyId,
     historyId,
@@ -601,4 +757,580 @@ export async function addOwnerInventoryItem(
 
   // 10. Format and return saved record
   return formatStockRecord(newStockRecord, medicine, false) as StockInventoryRecord;
+}
+
+/**
+ * Updates an owner's stock record (status, quantity, price, notes).
+ * - Enforces verified pharmacy status.
+ * - Confirms stock item belongs to the owner's pharmacy (404 on missing/other pharmacy).
+ * - If quantity is explicitly 0, normalizes status to 'out' (even if request asked for 'available' or 'low').
+ * - Preserves omitted fields; treats explicit null according to contract (clears field).
+ * - Trims and length-limits notes (<= 500 chars).
+ * - Sets server updatedAt and updatedBy.
+ * - Atomically persists update and appends StockHistory entry.
+ */
+export async function updateOwnerInventoryItem(
+  ownerId: string,
+  user: AuthenticatedUserContext,
+  stockId: string,
+  rawPayload: unknown
+): Promise<ServerStockUpdate> {
+  // 1. Resolve pharmacy and assert ownership & verified status
+  const pharmacy = await findPharmacyByOwner(ownerId);
+  if (!pharmacy) {
+    throw new ApplicationError(
+      'No authorized pharmacy record found for this account.',
+      'NOT_FOUND',
+      404
+    );
+  }
+  assertPharmacyOwnership(pharmacy, ownerId);
+  assertPharmacyVerifiedForInventoryWrite(pharmacy.status);
+
+  // 2. Locate existing stock item within owner's pharmacy (cross-tenant 404)
+  const pharmacyId = String((pharmacy as any)._id || (pharmacy as any).id);
+  const existing = await findStockRecord(stockId);
+  if (!existing || String(existing.pharmacyId) !== pharmacyId) {
+    throw new ApplicationError(
+      'The requested inventory item could not be found.',
+      'NOT_FOUND',
+      404
+    );
+  }
+
+  // 3. Sanitize and validate payload
+  const sanitized = sanitizeClientStockPayload((rawPayload || {}) as Record<string, unknown>);
+  const validated = validateUpdateInventoryPayload(sanitized);
+
+  // 4. Determine field transitions
+  const hasExplicitQuantity =
+    rawPayload !== null &&
+    typeof rawPayload === 'object' &&
+    'quantity' in (rawPayload as Record<string, unknown>);
+  const isExplicitZeroQuantity = hasExplicitQuantity && validated.quantity === 0;
+
+  let nextQuantity: number | undefined;
+  if (hasExplicitQuantity) {
+    nextQuantity = validated.quantity === null ? undefined : validated.quantity;
+  } else {
+    nextQuantity = existing.quantity;
+  }
+
+  let nextStatus: StockStatus;
+  if (isExplicitZeroQuantity) {
+    // Normalization rule: explicit 0 quantity forces 'out', even if available/low requested
+    nextStatus = 'out';
+  } else if (validated.status !== undefined) {
+    nextStatus = validated.status;
+  } else {
+    nextStatus = existing.status;
+  }
+
+  const hasExplicitPrice =
+    rawPayload !== null &&
+    typeof rawPayload === 'object' &&
+    'price' in (rawPayload as Record<string, unknown>);
+  let nextPrice: number | undefined;
+  if (hasExplicitPrice) {
+    nextPrice = validated.price === null ? undefined : validated.price;
+  } else {
+    nextPrice = existing.price;
+  }
+
+  const hasExplicitNotes =
+    rawPayload !== null &&
+    typeof rawPayload === 'object' &&
+    'notes' in (rawPayload as Record<string, unknown>);
+  let nextNotes: string | undefined;
+  if (hasExplicitNotes) {
+    nextNotes = validated.notes === null || validated.notes === undefined ? undefined : validated.notes;
+  } else {
+    nextNotes = existing.notes;
+  }
+
+  // Server-authoritative actor & timestamp
+  const now = new Date();
+  const updatedBy = user.userId;
+  const updatedByName = user.name || pharmacy.ownerName || null;
+  const actualStockId = String(existing.stockId || existing._id);
+  const actualMedicineId = String(existing.medicineId);
+
+  // 5. Build StockHistory entry
+  const historyId = generateHistoryId();
+  const historyEntry: any = {
+    _id: historyId,
+    historyId,
+    stockId: actualStockId,
+    pharmacyId,
+    medicineId: actualMedicineId,
+    oldStatus: existing.status ?? null,
+    newStatus: nextStatus,
+    oldQuantity: existing.quantity ?? null,
+    newQuantity: nextQuantity ?? null,
+    changedBy: updatedBy,
+    changedByName: updatedByName,
+    changedAt: now,
+  };
+
+  // 6. Consistent persistence
+  let savedRecord: any = null;
+
+  if (isConnected()) {
+    let session: mongoose.ClientSession | null = null;
+    let useTx = false;
+    try {
+      session = await mongoose.startSession();
+      session.startTransaction();
+      useTx = true;
+    } catch {
+      session = null;
+      useTx = false;
+    }
+
+    if (useTx && session) {
+      try {
+        existing.status = nextStatus;
+        existing.quantity = nextQuantity;
+        existing.price = nextPrice;
+        existing.notes = nextNotes;
+        existing.updatedAt = now;
+        existing.updatedBy = updatedBy;
+        existing.updatedByName = updatedByName;
+        await existing.save({ session });
+
+        const histDoc = new StockHistory({
+          ...historyEntry,
+          stockId: Types.ObjectId.isValid(actualStockId) ? new Types.ObjectId(actualStockId) : actualStockId,
+          pharmacyId: Types.ObjectId.isValid(pharmacyId) ? new Types.ObjectId(pharmacyId) : pharmacyId,
+          medicineId: Types.ObjectId.isValid(actualMedicineId) ? new Types.ObjectId(actualMedicineId) : actualMedicineId,
+        });
+        await histDoc.save({ session });
+
+        await session.commitTransaction();
+        savedRecord = existing;
+      } catch (err) {
+        await session.abortTransaction();
+        throw err;
+      } finally {
+        await session.endSession();
+      }
+    } else {
+      // Safe consistency strategy for non-replica MongoDB
+      let savedHistDoc: any = null;
+      try {
+        const histDoc = new StockHistory({
+          ...historyEntry,
+          stockId: Types.ObjectId.isValid(actualStockId) ? new Types.ObjectId(actualStockId) : actualStockId,
+          pharmacyId: Types.ObjectId.isValid(pharmacyId) ? new Types.ObjectId(pharmacyId) : pharmacyId,
+          medicineId: Types.ObjectId.isValid(actualMedicineId) ? new Types.ObjectId(actualMedicineId) : actualMedicineId,
+        });
+        savedHistDoc = await histDoc.save();
+      } catch (histErr) {
+        throw new ApplicationError('Failed to record stock history audit entry.', 'DATABASE_ERROR', 500);
+      }
+
+      try {
+        existing.status = nextStatus;
+        existing.quantity = nextQuantity;
+        existing.price = nextPrice;
+        existing.notes = nextNotes;
+        existing.updatedAt = now;
+        existing.updatedBy = updatedBy;
+        existing.updatedByName = updatedByName;
+        await existing.save();
+        savedRecord = existing;
+      } catch (stockErr) {
+        try {
+          await StockHistory.collection.deleteOne({ _id: savedHistDoc._id });
+        } catch {
+          // ignore compensation error
+        }
+        throw new ApplicationError('Failed to update stock record.', 'DATABASE_ERROR', 500);
+      }
+    }
+  } else {
+    // In-memory atomic store update
+    const updatedStock = {
+      ...existing,
+      status: nextStatus,
+      quantity: nextQuantity,
+      price: nextPrice,
+      notes: nextNotes,
+      updatedAt: now,
+      updatedBy,
+      updatedByName,
+    };
+    inMemoryStocks.set(actualStockId, updatedStock);
+    inMemoryStockHistory.set(historyId, historyEntry);
+    savedRecord = updatedStock;
+  }
+
+  return formatServerStockUpdate(savedRecord, false) as ServerStockUpdate;
+}
+
+/**
+ * Records an owner's physical stock recheck and clears stale or unverified state.
+ * - Requires verified pharmacy status.
+ * - Restores unverified stock to available or owner-confirmed status (owner cannot set unverified).
+ * - If quantity is explicitly 0, normalizes status to 'out'.
+ * - Sets new server timestamp and actor; clears staleness (isStale: false, freshness: 'fresh').
+ * - Appends StockHistory audit record even if status/quantity are unchanged.
+ */
+export async function reconfirmOwnerInventoryItem(
+  ownerId: string,
+  user: AuthenticatedUserContext,
+  stockId: string,
+  rawPayload: unknown
+): Promise<ServerStockUpdate> {
+  // 1. Resolve pharmacy and assert ownership & verified status
+  const pharmacy = await findPharmacyByOwner(ownerId);
+  if (!pharmacy) {
+    throw new ApplicationError(
+      'No authorized pharmacy record found for this account.',
+      'NOT_FOUND',
+      404
+    );
+  }
+  assertPharmacyOwnership(pharmacy, ownerId);
+  assertPharmacyVerifiedForInventoryWrite(pharmacy.status);
+
+  // 2. Locate existing stock item within owner's pharmacy (cross-tenant 404)
+  const pharmacyId = String((pharmacy as any)._id || (pharmacy as any).id);
+  const existing = await findStockRecord(stockId);
+  if (!existing || String(existing.pharmacyId) !== pharmacyId) {
+    throw new ApplicationError(
+      'The requested inventory item could not be found.',
+      'NOT_FOUND',
+      404
+    );
+  }
+
+  // 3. Sanitize and validate payload
+  const sanitized = sanitizeClientStockPayload((rawPayload || {}) as Record<string, unknown>);
+  const validated = validateReconfirmStockPayload(sanitized);
+
+  // 4. Determine status and quantity
+  const hasExplicitQuantity =
+    rawPayload !== null &&
+    typeof rawPayload === 'object' &&
+    'quantity' in (rawPayload as Record<string, unknown>);
+  const isExplicitZeroQuantity = hasExplicitQuantity && validated.quantity === 0;
+
+  let nextQuantity: number | undefined;
+  if (hasExplicitQuantity) {
+    nextQuantity = validated.quantity === null ? undefined : validated.quantity;
+  } else {
+    nextQuantity = existing.quantity;
+  }
+
+  let nextStatus: StockStatus;
+  if (isExplicitZeroQuantity) {
+    nextStatus = 'out';
+  } else if (validated.status !== undefined) {
+    nextStatus = validated.status;
+  } else {
+    if (existing.status === 'unverified') {
+      nextStatus = 'available';
+    } else {
+      nextStatus = existing.status;
+    }
+  }
+
+  // Server-authoritative actor & timestamp
+  const now = new Date();
+  const updatedBy = user.userId;
+  const updatedByName = user.name || pharmacy.ownerName || null;
+  const actualStockId = String(existing.stockId || existing._id);
+  const actualMedicineId = String(existing.medicineId);
+
+  // 5. Build StockHistory entry
+  const historyId = generateHistoryId();
+  const historyEntry: any = {
+    _id: historyId,
+    historyId,
+    stockId: actualStockId,
+    pharmacyId,
+    medicineId: actualMedicineId,
+    oldStatus: existing.status ?? null,
+    newStatus: nextStatus,
+    oldQuantity: existing.quantity ?? null,
+    newQuantity: nextQuantity ?? null,
+    changedBy: updatedBy,
+    changedByName: updatedByName,
+    changedAt: now,
+  };
+
+  // 6. Consistent persistence
+  let savedRecord: any = null;
+
+  if (isConnected()) {
+    let session: mongoose.ClientSession | null = null;
+    let useTx = false;
+    try {
+      session = await mongoose.startSession();
+      session.startTransaction();
+      useTx = true;
+    } catch {
+      session = null;
+      useTx = false;
+    }
+
+    if (useTx && session) {
+      try {
+        existing.status = nextStatus;
+        existing.quantity = nextQuantity;
+        existing.updatedAt = now;
+        existing.updatedBy = updatedBy;
+        existing.updatedByName = updatedByName;
+        await existing.save({ session });
+
+        const histDoc = new StockHistory({
+          ...historyEntry,
+          stockId: Types.ObjectId.isValid(actualStockId) ? new Types.ObjectId(actualStockId) : actualStockId,
+          pharmacyId: Types.ObjectId.isValid(pharmacyId) ? new Types.ObjectId(pharmacyId) : pharmacyId,
+          medicineId: Types.ObjectId.isValid(actualMedicineId) ? new Types.ObjectId(actualMedicineId) : actualMedicineId,
+        });
+        await histDoc.save({ session });
+
+        await session.commitTransaction();
+        savedRecord = existing;
+      } catch (err) {
+        await session.abortTransaction();
+        throw err;
+      } finally {
+        await session.endSession();
+      }
+    } else {
+      let savedHistDoc: any = null;
+      try {
+        const histDoc = new StockHistory({
+          ...historyEntry,
+          stockId: Types.ObjectId.isValid(actualStockId) ? new Types.ObjectId(actualStockId) : actualStockId,
+          pharmacyId: Types.ObjectId.isValid(pharmacyId) ? new Types.ObjectId(pharmacyId) : pharmacyId,
+          medicineId: Types.ObjectId.isValid(actualMedicineId) ? new Types.ObjectId(actualMedicineId) : actualMedicineId,
+        });
+        savedHistDoc = await histDoc.save();
+      } catch (histErr) {
+        throw new ApplicationError('Failed to record stock history audit entry.', 'DATABASE_ERROR', 500);
+      }
+
+      try {
+        existing.status = nextStatus;
+        existing.quantity = nextQuantity;
+        existing.updatedAt = now;
+        existing.updatedBy = updatedBy;
+        existing.updatedByName = updatedByName;
+        await existing.save();
+        savedRecord = existing;
+      } catch (stockErr) {
+        try {
+          await StockHistory.collection.deleteOne({ _id: savedHistDoc._id });
+        } catch {
+          // ignore compensation error
+        }
+        throw new ApplicationError('Failed to update stock record.', 'DATABASE_ERROR', 500);
+      }
+    }
+  } else {
+    // In-memory atomic store update
+    const updatedStock = {
+      ...existing,
+      status: nextStatus,
+      quantity: nextQuantity,
+      updatedAt: now,
+      updatedBy,
+      updatedByName,
+    };
+    inMemoryStocks.set(actualStockId, updatedStock);
+    inMemoryStockHistory.set(historyId, historyEntry);
+    savedRecord = updatedStock;
+  }
+
+  return formatServerStockUpdate(savedRecord, false) as ServerStockUpdate;
+}
+
+/**
+ * Returns read-only, cursor-paginated stock history for a stock item belonging to the authenticated owner's pharmacy.
+ * Stable ordering: newest first (changedAt DESC) with deterministic tie-breaker (_id/historyId DESC).
+ */
+export async function getOwnerStockHistory(
+  ownerId: string,
+  stockId: string,
+  queryOptions: { limit?: unknown; cursor?: unknown } = {}
+): Promise<StockHistoryResponse> {
+  // 1. Resolve pharmacy and assert ownership
+  const pharmacy = await findPharmacyByOwner(ownerId);
+  if (!pharmacy) {
+    throw new ApplicationError(
+      'No authorized pharmacy record found for this account.',
+      'NOT_FOUND',
+      404
+    );
+  }
+  assertPharmacyOwnership(pharmacy, ownerId);
+
+  // 2. Locate existing stock item within owner's pharmacy (cross-tenant 404)
+  const pharmacyId = String((pharmacy as any)._id || (pharmacy as any).id);
+  const existing = await findStockRecord(stockId);
+  if (!existing || String(existing.pharmacyId) !== pharmacyId) {
+    throw new ApplicationError(
+      'The requested inventory item could not be found.',
+      'NOT_FOUND',
+      404
+    );
+  }
+
+  // 3. Validate pagination parameters
+  const { limit, cursor } = validateStockHistoryQuery(queryOptions);
+
+  const actualStockId = String(existing.stockId || existing._id);
+
+  let rawEntries: any[] = [];
+
+  if (isConnected()) {
+    const stockCondition = {
+      $or: [
+        { stockId: actualStockId },
+        ...(Types.ObjectId.isValid(actualStockId) ? [{ stockId: new Types.ObjectId(actualStockId) }] : []),
+      ],
+    };
+    const pharmacyCondition = {
+      $or: [
+        { pharmacyId },
+        ...(Types.ObjectId.isValid(pharmacyId) ? [{ pharmacyId: new Types.ObjectId(pharmacyId) }] : []),
+      ],
+    };
+
+    let cursorCondition: Record<string, unknown> = {};
+    if (cursor) {
+      const decoded = decodeCursor(cursor);
+      if (decoded) {
+        const cursorDate = new Date(decoded.t);
+        const cursorId = decoded.id;
+        cursorCondition = {
+          $or: [
+            { changedAt: { $lt: cursorDate } },
+            {
+              changedAt: cursorDate,
+              _id: { $lt: Types.ObjectId.isValid(cursorId) ? new Types.ObjectId(cursorId) : cursorId },
+            },
+          ],
+        };
+      } else {
+        const cursorItem = await StockHistory.findOne({
+          $or: [
+            { historyId: cursor },
+            ...(Types.ObjectId.isValid(cursor) ? [{ _id: new Types.ObjectId(cursor) }] : []),
+          ],
+        }).lean();
+        if (cursorItem) {
+          const cursorDate = new Date(cursorItem.changedAt);
+          const cursorId = String(cursorItem._id);
+          cursorCondition = {
+            $or: [
+              { changedAt: { $lt: cursorDate } },
+              {
+                changedAt: cursorDate,
+                _id: { $lt: Types.ObjectId.isValid(cursorId) ? new Types.ObjectId(cursorId) : cursorId },
+              },
+            ],
+          };
+        } else {
+          throw new ValidationError(
+            'Invalid pagination cursor.',
+            { cursor: 'The provided pagination cursor is invalid or expired.' },
+            'VALIDATION_ERROR',
+            422
+          );
+        }
+      }
+    }
+
+    rawEntries = await StockHistory.find({
+      ...stockCondition,
+      ...pharmacyCondition,
+      ...cursorCondition,
+    })
+      .sort({ changedAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean();
+  } else {
+    // In-memory history resolution
+    const matching: any[] = [];
+    for (const h of inMemoryStockHistory.values()) {
+      if (
+        String(h.pharmacyId) === pharmacyId &&
+        (String(h.stockId) === actualStockId || String(h.stockId) === stockId)
+      ) {
+        matching.push(h);
+      }
+    }
+
+    // Sort newest first with deterministic tie-breaker on historyId/_id DESC
+    matching.sort((a, b) => {
+      const timeA = new Date(a.changedAt).getTime();
+      const timeB = new Date(b.changedAt).getTime();
+      if (timeB !== timeA) return timeB - timeA;
+      const idA = String(a.historyId || a._id);
+      const idB = String(b.historyId || b._id);
+      return idB.localeCompare(idA);
+    });
+
+    let pool = matching;
+    if (cursor) {
+      const decoded = decodeCursor(cursor);
+      let cursorTime: number | null = null;
+      let cursorId: string | null = null;
+
+      if (decoded) {
+        cursorTime = new Date(decoded.t).getTime();
+        cursorId = decoded.id;
+      } else {
+        const foundItem = matching.find(
+          (m) => String(m.historyId) === cursor || String(m._id) === cursor
+        );
+        if (foundItem) {
+          cursorTime = new Date(foundItem.changedAt).getTime();
+          cursorId = String(foundItem.historyId || foundItem._id);
+        } else {
+          throw new ValidationError(
+            'Invalid pagination cursor.',
+            { cursor: 'The provided pagination cursor is invalid or expired.' },
+            'VALIDATION_ERROR',
+            422
+          );
+        }
+      }
+
+      if (cursorTime !== null && cursorId !== null) {
+        pool = matching.filter((e) => {
+          const eTime = new Date(e.changedAt).getTime();
+          const eId = String(e.historyId || e._id);
+          if (eTime < cursorTime!) return true;
+          if (eTime === cursorTime) {
+            return eId.localeCompare(cursorId!) < 0;
+          }
+          return false;
+        });
+      }
+    }
+
+    rawEntries = pool.slice(0, limit + 1);
+  }
+
+  // 4. Compute pagination cursor
+  const hasMore = rawEntries.length > limit;
+  const pageEntries = hasMore ? rawEntries.slice(0, limit) : rawEntries;
+  let nextCursor: string | null = null;
+
+  if (hasMore && pageEntries.length > 0) {
+    const lastItem = pageEntries[pageEntries.length - 1];
+    nextCursor = encodeCursor(lastItem.changedAt, String(lastItem.historyId || lastItem._id));
+  }
+
+  return formatStockHistoryResponse(
+    pageEntries,
+    { limit, nextCursor },
+    true
+  ) as StockHistoryResponse;
 }

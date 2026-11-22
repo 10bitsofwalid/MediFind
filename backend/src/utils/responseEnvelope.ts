@@ -181,6 +181,8 @@ export function formatServerStockUpdate(
     status: stock.status,
     updatedAt: updatedAtIso,
     quantity: typeof stock.quantity === 'number' ? stock.quantity : undefined,
+    price: typeof stock.price === 'number' ? stock.price : undefined,
+    notes: typeof stock.notes === 'string' ? stock.notes : undefined,
     isStale: stale,
     freshness: stale ? 'stale' : 'fresh',
   };
