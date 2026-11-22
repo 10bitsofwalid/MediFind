@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { ENV } from './config/env';
 
 import { authRouter } from './routes/authRoutes';
+import { userRouter } from './routes/userRoutes';
 
 export const app: Application = express();
 
@@ -21,6 +22,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // API Routes
 app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/users', userRouter);
 
 // Liveness & Readiness endpoints
 app.get('/health', (_req: Request, res: Response) => {
