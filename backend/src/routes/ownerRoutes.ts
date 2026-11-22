@@ -20,6 +20,7 @@ import {
   updateOwnerInventoryItemHandler,
   reconfirmOwnerInventoryItemHandler,
   getOwnerStockHistoryHandler,
+  getOwnerSummaryHandler,
 } from '../controllers/stockController';
 
 const router = Router();
@@ -63,6 +64,9 @@ router.put('/pharmacy/opening-hours', updateOpeningHoursHandler);
 // ==========================================
 // Pharmacy Inventory Operations
 // ==========================================
+
+// 0. Operational Summary & Attention Items (GET /owner/summary)
+router.get('/summary', getOwnerSummaryHandler);
 
 // 1. List Pharmacy Inventory (GET /owner/inventory)
 router.get('/inventory', getOwnerInventoryHandler);

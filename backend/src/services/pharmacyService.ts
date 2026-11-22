@@ -132,6 +132,41 @@ export async function seedPharmacy(
 }
 
 /**
+ * Resolves a pharmacy profile by pharmacy ID.
+ */
+export async function findPharmacyById(pharmacyId: string): Promise<any | null> {
+  const targetId = String(pharmacyId).trim();
+  if (!targetId) return null;
+
+  if (isConnected()) {
+    const doc = await Pharmacy.findOne({
+      $or: [
+        { _id: Types.ObjectId.isValid(targetId) ? new Types.ObjectId(targetId) : targetId },
+        { id: targetId },
+      ],
+    }).lean();
+    if (doc) return doc;
+  }
+
+  ensureSyntheticFixtures();
+  for (const p of inMemoryPharmacies.values()) {
+    if (String(p._id) === targetId || String(p.id) === targetId) {
+      return p;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Returns all in-memory pharmacies for fallback querying.
+ */
+export function getAllInMemoryPharmacies(): any[] {
+  ensureSyntheticFixtures();
+  return Array.from(inMemoryPharmacies.values());
+}
+
+/**
  * Resolves the pharmacy profile belonging to the authenticated owner.
  * If no Pharmacy record exists, seamlessly resolves an active PharmacyApplication
  * without presenting pending records as verified.

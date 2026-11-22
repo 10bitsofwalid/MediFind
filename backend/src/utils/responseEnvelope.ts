@@ -5,13 +5,14 @@ import type {
   PharmacyApplicationResponse,
 } from '../types/pharmacy';
 import type {
+  OwnerSummary,
   ServerStockUpdate,
   StockHistoryPage,
   StockHistoryRecord,
   StockHistoryResponse,
   StockInventoryRecord,
 } from '../types/stock';
-import { isReportStale } from './freshness';
+import { calculateFreshness, isReportStale } from './freshness';
 
 /**
  * Wraps any data payload in the standard { data: T, page?: ... } API response envelope.
@@ -126,14 +127,15 @@ export function formatPharmacyResponse(
 export function formatStockRecord(
   stock: any,
   medicine: any,
-  wrapInEnvelope: boolean = true
+  wrapInEnvelope: boolean = true,
+  options?: { thresholdHours?: number; currentTime?: Date | string | number }
 ): ApiSuccessResponse<StockInventoryRecord> | StockInventoryRecord {
   const updatedAtIso =
     stock.updatedAt instanceof Date
       ? stock.updatedAt.toISOString()
       : String(stock.updatedAt || new Date().toISOString());
 
-  const stale = isReportStale(updatedAtIso);
+  const freshResult = calculateFreshness(updatedAtIso, options?.thresholdHours, options?.currentTime);
 
   const formatted: StockInventoryRecord = {
     stockId: String(stock._id || stock.stockId || stock.id),
@@ -155,8 +157,8 @@ export function formatStockRecord(
     updatedAt: updatedAtIso,
     updatedBy: stock.updatedBy ? String(stock.updatedBy) : undefined,
     updatedByName: stock.updatedByName,
-    isStale: stale,
-    freshness: stale ? 'stale' : 'fresh',
+    isStale: freshResult.isStale,
+    freshness: freshResult.freshness,
   };
 
   return wrapInEnvelope ? wrapEnvelope(formatted) : formatted;
@@ -167,14 +169,15 @@ export function formatStockRecord(
  */
 export function formatServerStockUpdate(
   stock: any,
-  wrapInEnvelope: boolean = true
+  wrapInEnvelope: boolean = true,
+  options?: { thresholdHours?: number; currentTime?: Date | string | number }
 ): ApiSuccessResponse<ServerStockUpdate> | ServerStockUpdate {
   const updatedAtIso =
     stock.updatedAt instanceof Date
       ? stock.updatedAt.toISOString()
       : String(stock.updatedAt || new Date().toISOString());
 
-  const stale = isReportStale(updatedAtIso);
+  const freshResult = calculateFreshness(updatedAtIso, options?.thresholdHours, options?.currentTime);
 
   const formatted: ServerStockUpdate = {
     stockId: String(stock._id || stock.stockId || stock.id),
@@ -183,8 +186,8 @@ export function formatServerStockUpdate(
     quantity: typeof stock.quantity === 'number' ? stock.quantity : undefined,
     price: typeof stock.price === 'number' ? stock.price : undefined,
     notes: typeof stock.notes === 'string' ? stock.notes : undefined,
-    isStale: stale,
-    freshness: stale ? 'stale' : 'fresh',
+    isStale: freshResult.isStale,
+    freshness: freshResult.freshness,
   };
 
   return wrapInEnvelope ? wrapEnvelope(formatted) : formatted;
@@ -225,3 +228,14 @@ export function formatStockHistoryResponse(
 
   return formatted;
 }
+
+/**
+ * Formats the owner workspace summary response.
+ */
+export function formatOwnerSummaryResponse(
+  summary: OwnerSummary,
+  wrapInEnvelope: boolean = true
+): ApiSuccessResponse<OwnerSummary> | OwnerSummary {
+  return wrapInEnvelope ? wrapEnvelope(summary) : summary;
+}
+

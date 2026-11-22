@@ -472,3 +472,62 @@ app.use('/api/owner', requireAuth, requireRole('PHARMACY'), ownerRouter);
 ### For Frontend Team
 - [ ] Flip `VITE_USE_MOCK_API=false` in `frontend/.env` to run end-to-end integration against Developer 1's live server on `http://localhost:5000/api`.
 - [ ] Confirm all 93 existing tests continue passing against live mock toggle.
+
+---
+
+## 9. Stock Freshness, Attention Items & Owner Summary Specifications
+
+### 9.1 Freshness Calculation Rules & Invariants
+- **Elapsed Hours Formula:**  
+  $$\text{elapsedHours} = \frac{\text{currentTime} - \text{updatedAt}}{1000 \times 60 \times 60}$$
+- **Freshness Evaluation:**  
+  $$\text{isStale} = \text{elapsedHours} \ge \text{thresholdHours}$$
+  $$\text{freshness} = \begin{cases} \text{'stale'}, & \text{if } \text{isStale} \\ \text{'fresh'}, & \text{otherwise} \end{cases}$$
+- **Default Threshold:** **24 hours** is used when no configured system threshold exists.
+- **Orthogonality Invariant:** Freshness is strictly a derived property and **never** mutates the reported stock status (`available`, `low`, `out`, `unverified`). A stock record does not become `unverified` or `out` simply because it exceeds the stale threshold.
+- **Timestamp & Clock Standard:** Consistent server clock using ISO 8601 UTC timestamps. The calculation is testable with a supplied/controlled reference time.
+- **Response Fields:** Backend stock records and updates return both `isStale: boolean` and `freshness: 'fresh' | 'stale'`, matching frontend normalizers in `stockService.ts`.
+
+### 9.2 Server-Side Configuration Source & Hierarchy
+Quality thresholds are stored in the server-side `SystemSetting` model (`key: 'stale_threshold_hours'` or `key: 'quality_thresholds'`):
+1. **Test Override:** `setTestStaleThreshold(hours)` for deterministic test control.
+2. **Persistent SystemSetting:** Stored in MongoDB / fallback in-memory store, managed via `GET /admin/settings/quality-thresholds` and `PATCH /admin/settings/quality-thresholds`.
+3. **Environment Variable:** `STALE_THRESHOLD_HOURS` fallback.
+4. **Default Fallback:** `DEFAULT_STALE_THRESHOLD_HOURS = 24`.
+
+### 9.3 Attention Query Specification
+- **Route:** `GET /owner/inventory?attention=true` (or `/api/owner/inventory?attention=true`)
+- **Ownership Scoping:** Derived strictly from the authenticated JWT session (`findPharmacyByOwner(ownerId)`). Client-supplied pharmacy IDs are never trusted as proof of ownership.
+- **Filter Criterion:** Matches records where `status === 'unverified' || isStale === true`.
+- **Ordering:** Prioritizes Unverified reports first (`status === 'unverified'`), followed by oldest stale reports (`updatedAt` ascending).
+
+### 9.4 Owner Operational Summary Specification
+- **Route:** `GET /owner/summary` (or `/api/owner/summary`)
+- **Required Role:** `PHARMACY` (Bearer token)
+- **Response Schema:**
+  ```typescript
+  interface OwnerSummary {
+    totalInventory: number;
+    availableCount: number;
+    lowCount: number;
+    outCount: number;
+    staleCount: number;
+    unverifiedCount: number;
+    attentionItems: StockInventoryRecord[];
+  }
+  ```
+- **Integrity Rule:** All counts are derived purely from the authenticated owner's persisted inventory. No fabricated reliability scores, compliance percentages, or invented dashboard metrics.
+- **Frontend Tolerance:** The frontend treats `/owner/summary` as optional and safely falls back to local computation without crashing when the endpoint returns `404`, `405`, or `501`.
+
+---
+
+## 10. Developer 3 Coordination Agreement (Unverified State & Quality Thresholds)
+
+| Concern | Agreement & Ownership Rule | Owning Developer |
+|---|---|---|
+| **Setting `unverified` Status** | Stock status is set to `unverified` when accumulated customer discrepancy reports exceed the configured threshold, or via administrator moderation (`POST /admin/stocks/:stockId/mark-unverified`). Pharmacy owners cannot set `unverified` manually on add or update. Age alone never sets `unverified`. | **Developer 3** (Customer Reporting & Moderation) |
+| **Clearing `unverified` Status** | Cleared only via the pharmacy owner reconfirmation endpoint (`POST /owner/inventory/:stockId/reconfirm`). A physical check restores status to `available` (or confirmed writable status `low`/`out`), bumps `updatedAt` to now, resets `isStale: false`, and writes a `StockHistory` entry. | **Developer 2** (Pharmacy Operations) |
+| **Quality Threshold Configuration** | Stale threshold hours (default 24) and unverified report threshold (default 3) are managed through `GET/PATCH /admin/settings/quality-thresholds`. Developer 2 reads this configuration without independently modifying report threshold rules. | **Developer 3 & Developer 2** |
+| **Distinct Attention Reasons** | Stale stock and Unverified stock represent distinct operational issues: Stale indicates outdated reports needing reconfirmation; Unverified indicates customer discrepancy reports needing audit. They appear distinctly in UI badges and API counts (`staleCount` vs `unverifiedCount`). | **Developer 2** (Pharmacy Operations) |
+| **Customer Availability Exposure** | Customer-facing discovery (`GET /pharmacies/nearby` and `GET /availability/search`) returns both reported `stockStatus` and computed `isStale`/`freshness` separately, and strictly excludes unverified/pending pharmacies (`status: 'verified'` only). | **Developer 2 & Developer 3** |
+

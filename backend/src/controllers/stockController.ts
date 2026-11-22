@@ -8,12 +8,13 @@ import {
   reconfirmOwnerInventoryItem,
   getOwnerStockHistory,
   searchCatalogue,
+  getOwnerSummary,
 } from '../services/stockService';
 import { wrapEnvelope } from '../utils/responseEnvelope';
 
 /**
  * Handles GET /owner/inventory
- * Returns the authenticated owner's pharmacy inventory, supporting q, status, freshness, and sort filters.
+ * Returns the authenticated owner's pharmacy inventory, supporting q, status, freshness, attention, and sort filters.
  */
 export async function getOwnerInventoryHandler(
   req: Request,
@@ -27,8 +28,28 @@ export async function getOwnerInventoryHandler(
       status?: string;
       freshness?: string;
       sort?: string;
+      attention?: string;
     });
     res.status(200).json(wrapEnvelope(items));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Handles GET /owner/summary
+ * Returns the operational summary and attention items derived purely from the authenticated
+ * owner's persisted inventory.
+ */
+export async function getOwnerSummaryHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const ownerId = req.user!.userId;
+    const summary = await getOwnerSummary(ownerId);
+    res.status(200).json(wrapEnvelope(summary));
   } catch (err) {
     next(err);
   }

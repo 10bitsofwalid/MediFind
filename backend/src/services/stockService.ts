@@ -36,6 +36,7 @@ import type {
   StockHistoryRecord,
   ServerStockUpdate,
   StockHistoryResponse,
+  OwnerSummary,
 } from '../types/stock';
 
 // In-memory stores for development fallback and unit tests when MongoDB is offline
@@ -119,6 +120,14 @@ export function clearInMemoryStockStore(): void {
   inMemoryStockHistory.clear();
   inMemoryMedicines.clear();
   ensureSyntheticFixtures();
+}
+
+/**
+ * Returns all in-memory stock records for fallback querying.
+ */
+export function getAllInMemoryStocks(): any[] {
+  ensureSyntheticFixtures();
+  return Array.from(inMemoryStocks.values());
 }
 
 /**
@@ -449,7 +458,7 @@ export async function searchCatalogue(
  */
 export async function getOwnerInventory(
   ownerId: string,
-  filters: { q?: string; status?: string; freshness?: string; sort?: string } = {}
+  filters: { q?: string; status?: string; freshness?: string; sort?: string; attention?: string } = {}
 ): Promise<StockInventoryRecord[]> {
   const pharmacy = await findPharmacyByOwner(ownerId);
   if (!pharmacy) {
@@ -530,18 +539,106 @@ export async function getOwnerInventory(
     }
   }
 
-  // Sort order: updated_desc (default), oldest_first, name_asc
-  const sortOption = (filters.sort || 'updated_desc').trim().toLowerCase();
-  if (sortOption === 'oldest_first') {
-    items.sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
-  } else if (sortOption === 'name_asc') {
-    items.sort((a, b) => a.medicineName.localeCompare(b.medicineName));
+  // Filter 4: Attention query ('true' | '1' | 'yes' -> unverified reports or stale stock)
+  const isAttentionQuery =
+    filters.attention === 'true' ||
+    filters.attention === '1' ||
+    filters.attention === 'yes';
+
+  if (isAttentionQuery) {
+    items = items.filter((item) => item.status === 'unverified' || item.isStale === true);
+  }
+
+  // Sort order:
+  // For attention query, default sort prioritizes unverified items first, then oldest stale reports
+  if (isAttentionQuery && !filters.sort) {
+    items.sort((a, b) => {
+      if (a.status === 'unverified' && b.status !== 'unverified') return -1;
+      if (b.status === 'unverified' && a.status !== 'unverified') return 1;
+      const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      return (Number.isNaN(timeA) ? 0 : timeA) - (Number.isNaN(timeB) ? 0 : timeB);
+    });
   } else {
-    // updated_desc default
-    items.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    const sortOption = (filters.sort || 'updated_desc').trim().toLowerCase();
+    if (sortOption === 'oldest_first') {
+      items.sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
+    } else if (sortOption === 'name_asc') {
+      items.sort((a, b) => a.medicineName.localeCompare(b.medicineName));
+    } else {
+      // updated_desc default
+      items.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    }
   }
 
   return items;
+}
+
+/**
+ * Computes owner workspace operational summary and attention items strictly derived from the
+ * authenticated owner's persisted inventory.
+ *
+ * Supported Fields:
+ * - totalInventory: total count of items in owner's inventory
+ * - availableCount: count of items with status === 'available'
+ * - lowCount: count of items with status === 'low'
+ * - outCount: count of items with status === 'out'
+ * - staleCount: count of items where isStale === true (updatedAt >= threshold)
+ * - unverifiedCount: count of items with status === 'unverified'
+ * - attentionItems: items needing attention (unverified OR stale), prioritized unverified first, then oldest reports
+ *
+ * Never fabricates estimated reliability scores, percentages, or invented metrics.
+ */
+export async function getOwnerSummary(ownerId: string): Promise<OwnerSummary> {
+  const pharmacy = await findPharmacyByOwner(ownerId);
+  if (!pharmacy) {
+    throw new ApplicationError(
+      'No authorized pharmacy record found for this account.',
+      'NOT_FOUND',
+      404
+    );
+  }
+
+  const items = await getOwnerInventory(ownerId);
+
+  let availableCount = 0;
+  let lowCount = 0;
+  let outCount = 0;
+  let staleCount = 0;
+  let unverifiedCount = 0;
+  const attentionItems: StockInventoryRecord[] = [];
+
+  for (const item of items) {
+    if (item.status === 'available') availableCount += 1;
+    else if (item.status === 'low') lowCount += 1;
+    else if (item.status === 'out') outCount += 1;
+    else if (item.status === 'unverified') unverifiedCount += 1;
+
+    if (item.isStale) staleCount += 1;
+
+    if (item.status === 'unverified' || item.isStale) {
+      attentionItems.push(item);
+    }
+  }
+
+  // Sort attention items: unverified first, then oldest stale reports
+  attentionItems.sort((a, b) => {
+    if (a.status === 'unverified' && b.status !== 'unverified') return -1;
+    if (b.status === 'unverified' && a.status !== 'unverified') return 1;
+    const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return (Number.isNaN(timeA) ? 0 : timeA) - (Number.isNaN(timeB) ? 0 : timeB);
+  });
+
+  return {
+    totalInventory: items.length,
+    availableCount,
+    lowCount,
+    outCount,
+    staleCount,
+    unverifiedCount,
+    attentionItems,
+  };
 }
 
 /**

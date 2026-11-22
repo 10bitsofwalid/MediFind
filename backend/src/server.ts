@@ -9,6 +9,14 @@ import { AuthorizationError } from './auth/ownership';
 import { ApplicationError } from './utils/errors';
 import ownerRouter from './routes/ownerRoutes';
 import { getMedicinesHandler } from './controllers/stockController';
+import {
+  searchNearbyPharmaciesHandler,
+  getPharmacyAvailabilityHandler,
+} from './controllers/availabilityController';
+import {
+  getQualityThresholdsHandler,
+  updateQualityThresholdsHandler,
+} from './controllers/adminController';
 
 // Load environment variables
 dotenv.config();
@@ -61,6 +69,20 @@ app.get('/api/health', (_req: Request, res: Response) => {
 // Curated Catalogue Search Endpoints (GET /medicines and GET /api/medicines)
 app.get('/medicines', getMedicinesHandler);
 app.get('/api/medicines', getMedicinesHandler);
+
+// Customer-Facing Proximity & Availability Discovery Endpoints
+app.get('/pharmacies/nearby', searchNearbyPharmaciesHandler);
+app.get('/api/pharmacies/nearby', searchNearbyPharmaciesHandler);
+app.get('/availability/search', searchNearbyPharmaciesHandler);
+app.get('/api/availability/search', searchNearbyPharmaciesHandler);
+app.get('/pharmacies/:pharmacyId/availability', getPharmacyAvailabilityHandler);
+app.get('/api/pharmacies/:pharmacyId/availability', getPharmacyAvailabilityHandler);
+
+// Admin Configuration Endpoints (Developer 3 Coordination)
+app.get('/admin/settings/quality-thresholds', getQualityThresholdsHandler);
+app.get('/api/admin/settings/quality-thresholds', getQualityThresholdsHandler);
+app.patch('/admin/settings/quality-thresholds', updateQualityThresholdsHandler);
+app.patch('/api/admin/settings/quality-thresholds', updateQualityThresholdsHandler);
 
 // Pharmacy Owner Operations Namespace (/api/owner and /owner)
 app.use('/api/owner', ownerRouter);

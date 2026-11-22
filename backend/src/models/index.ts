@@ -5,3 +5,4 @@ export * from './Pharmacy';
 export * from './Medicine';
 export * from './Stock';
 export * from './StockHistory';
+export * from './SystemSetting';
