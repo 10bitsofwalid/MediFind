@@ -90,6 +90,22 @@ export function assertPharmacyRole(user: AuthenticatedUserContext | undefined | 
 }
 
 /**
+ * Asserts that the authenticated user possesses the 'ADMIN' role required for moderation operations.
+ */
+export function assertAdminRole(user: AuthenticatedUserContext | undefined | null): void {
+  if (!user || !user.userId) {
+    throw new AuthorizationError('Authentication required.', 'UNAUTHORIZED', 401);
+  }
+  if (user.role !== 'ADMIN') {
+    throw new AuthorizationError(
+      'Access denied. Administrator role required for this operation.',
+      'FORBIDDEN',
+      403
+    );
+  }
+}
+
+/**
  * Verifies that the resolved pharmacy is owned by the authenticated server user.
  * Never trusts a client-supplied pharmacyId or ownerId.
  */

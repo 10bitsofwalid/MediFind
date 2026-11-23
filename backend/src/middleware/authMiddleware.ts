@@ -1,7 +1,7 @@
 // backend/src/middleware/authMiddleware.ts
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { AuthorizationError, AuthenticatedUserContext, assertPharmacyRole } from '../auth/ownership';
+import { AuthorizationError, AuthenticatedUserContext, assertPharmacyRole, assertAdminRole } from '../auth/ownership';
 
 declare global {
   namespace Express {
@@ -122,6 +122,18 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 export function requirePharmacyRole(req: Request, _res: Response, next: NextFunction): void {
   try {
     assertPharmacyRole(req.user);
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Middleware ensuring caller has the ADMIN role.
+ */
+export function requireAdminRole(req: Request, _res: Response, next: NextFunction): void {
+  try {
+    assertAdminRole(req.user);
     next();
   } catch (err) {
     next(err);

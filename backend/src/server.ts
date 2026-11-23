@@ -19,31 +19,105 @@ import {
 import {
   getQualityThresholdsHandler,
   updateQualityThresholdsHandler,
+  listPharmacyApplicationsHandler,
+  approvePharmacyApplicationHandler,
+  rejectPharmacyApplicationHandler,
+  suspendPharmacyHandler,
+  reactivatePharmacyHandler,
 } from './controllers/adminController';
+import { Pharmacy } from './models/Pharmacy';
+import { PharmacyApplication } from './models/PharmacyApplication';
+import { Stock } from './models/Stock';
+import { StockHistory } from './models/StockHistory';
+import { Medicine } from './models/Medicine';
 
 // Load environment variables
 dotenv.config();
 
+// Environment Variable Validation & Startup Configuration
+export function validateEnvironment(): {
+  port: number;
+  nodeEnv: string;
+  mongoUri: string;
+  jwtSecret: string;
+  corsOrigins: string[];
+} {
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const port = parseInt(process.env.PORT || '5000', 10);
+  const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/medifind';
+  const jwtSecret = process.env.JWT_SECRET || 'medifind_jwt_secret_dev_key_2026';
+
+  if ((nodeEnv === 'production' || nodeEnv === 'staging') && jwtSecret === 'medifind_jwt_secret_dev_key_2026') {
+    throw new Error(
+      `[Security Fatal] Insecure default JWT_SECRET detected in ${nodeEnv} environment. Set a strong random secret.`
+    );
+  }
+
+  const defaultCors = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:5174',
+    'http://localhost:3000',
+  ];
+  const envCors = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+    : [];
+  const corsOrigins = envCors.length > 0 ? envCors : defaultCors;
+
+  return { port, nodeEnv, mongoUri, jwtSecret, corsOrigins };
+}
+
+const envConfig = validateEnvironment();
 const app = express();
-const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/medifind';
+const PORT = envConfig.port;
+const MONGODB_URI = envConfig.mongoUri;
 
 // Core Security & Request Parsing Middleware
 app.use(helmet());
 app.use(
   cors({
-    origin: [
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
-      'http://localhost:5174',
-      'http://localhost:3000',
-    ],
+    origin: envConfig.corsOrigins,
     credentials: true,
   })
 );
 app.use(express.json());
 
-// Root & System Health Check
+// Privacy-Preserving Structured Request Logging
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+  const rawReqId = req.headers['x-request-id'];
+  const requestId = Array.isArray(rawReqId)
+    ? rawReqId[0]
+    : rawReqId || `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  res.setHeader('X-Request-Id', requestId);
+
+  res.on('finish', () => {
+    const durationMs = Date.now() - start;
+    // Suppress console output during automated test suites
+    if (process.env.NODE_ENV !== 'test') {
+      const statusGroup = Math.floor(res.statusCode / 100);
+      const level = statusGroup === 5 ? 'ERROR' : statusGroup === 4 ? 'WARN' : 'INFO';
+      console.log(`[HTTP ${level}] ${req.method} ${req.path} ${res.statusCode} ${durationMs}ms (id: ${requestId})`);
+    }
+  });
+
+  next();
+});
+
+// Root & Health Check Endpoints (Mounted at both / and /api)
+function getHealthPayload() {
+  const isDbConnected = mongoose.connection.readyState === 1;
+  return {
+    status: isDbConnected ? 'ok' : 'degraded',
+    mode: isDbConnected ? 'mongodb' : 'synthetic_development_fallback',
+    database: isDbConnected ? 'connected' : 'disconnected',
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    version: '1.0.0',
+    service: 'MediFind Pharmacy Backend',
+  };
+}
+
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     name: 'MediFind Backend API',
@@ -56,17 +130,17 @@ app.get('/', (_req: Request, res: Response) => {
       inventory: '/api/owner/inventory',
       application: '/api/owner/pharmacy-application',
       medicines: '/api/medicines',
+      adminVerification: '/api/admin/pharmacy-applications',
     },
   });
 });
 
+app.get('/health', (_req: Request, res: Response) => {
+  res.json(getHealthPayload());
+});
+
 app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    uptimeSeconds: Math.floor(process.uptime()),
-    timestamp: new Date().toISOString(),
-  });
+  res.json(getHealthPayload());
 });
 
 // Curated Catalogue Search Endpoints (GET /medicines and GET /api/medicines)
@@ -81,11 +155,23 @@ app.get('/api/availability/search', searchNearbyPharmaciesHandler);
 app.get('/pharmacies/:pharmacyId/availability', getPharmacyAvailabilityHandler);
 app.get('/api/pharmacies/:pharmacyId/availability', getPharmacyAvailabilityHandler);
 
-// Admin Configuration Endpoints (Developer 3 Coordination)
+// Admin Configuration Endpoints (Developer 3 Coordination Agreement)
 app.get('/admin/settings/quality-thresholds', getQualityThresholdsHandler);
 app.get('/api/admin/settings/quality-thresholds', getQualityThresholdsHandler);
 app.patch('/admin/settings/quality-thresholds', updateQualityThresholdsHandler);
 app.patch('/api/admin/settings/quality-thresholds', updateQualityThresholdsHandler);
+
+// Admin Pharmacy Verification Queue & Moderation Endpoints
+app.get('/admin/pharmacy-applications', listPharmacyApplicationsHandler);
+app.get('/api/admin/pharmacy-applications', listPharmacyApplicationsHandler);
+app.post('/admin/pharmacy-applications/:applicationId/approve', approvePharmacyApplicationHandler);
+app.post('/api/admin/pharmacy-applications/:applicationId/approve', approvePharmacyApplicationHandler);
+app.post('/admin/pharmacy-applications/:applicationId/reject', rejectPharmacyApplicationHandler);
+app.post('/api/admin/pharmacy-applications/:applicationId/reject', rejectPharmacyApplicationHandler);
+app.post('/admin/pharmacies/:pharmacyId/suspend', suspendPharmacyHandler);
+app.post('/api/admin/pharmacies/:pharmacyId/suspend', suspendPharmacyHandler);
+app.post('/admin/pharmacies/:pharmacyId/reactivate', reactivatePharmacyHandler);
+app.post('/api/admin/pharmacies/:pharmacyId/reactivate', reactivatePharmacyHandler);
 
 // Authentication & User Identity Endpoints (/api/auth and /auth, /api/me and /me)
 app.use('/auth', authRouter);
@@ -195,6 +281,20 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   });
 });
 
+// Safe Index Synchronization Helper (Non-destructive)
+export async function syncDatabaseIndexes(): Promise<void> {
+  if (mongoose.connection.readyState === 1) {
+    await Promise.all([
+      Pharmacy.init(),
+      PharmacyApplication.init(),
+      Stock.init(),
+      StockHistory.init(),
+      Medicine.init(),
+    ]);
+    console.log('[Database] Mongoose schema indexes verified and synchronized safely.');
+  }
+}
+
 // Database Connection & Server Startup
 async function startServer() {
   try {
@@ -203,6 +303,7 @@ async function startServer() {
       serverSelectionTimeoutMS: 2000,
     });
     console.log(`[Database] Connected to MongoDB at ${MONGODB_URI}`);
+    await syncDatabaseIndexes();
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.warn(`[Database] MongoDB offline: ${errorMsg}`);
@@ -216,12 +317,12 @@ async function startServer() {
   });
 }
 
-// Start if executed directly and not running under a test runner
-const isRunningTests =
+// Start if executed directly and not running under a test runner or CLI script
+const isRunningTestsOrScript =
   process.env.NODE_ENV === 'test' ||
-  process.argv.some((arg) => arg.includes('test'));
+  process.argv.some((arg) => arg.includes('test') || arg.includes('walkthrough') || arg.includes('seed'));
 
-if (!isRunningTests) {
+if (!isRunningTestsOrScript) {
   startServer();
 }
 

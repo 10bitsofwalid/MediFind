@@ -445,6 +445,18 @@ export async function adminSetApplicationStatus(
 }
 
 /**
+ * Reads all pharmacy applications for administrator review.
+ */
+export async function findAllApplications(): Promise<any[]> {
+  if (isConnected()) {
+    return await PharmacyApplication.find().sort({ submittedAt: -1 }).lean();
+  }
+  return Array.from(inMemoryApplications.values()).sort(
+    (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+  );
+}
+
+/**
  * Resets in-memory storage (used for test isolation).
  */
 export function clearInMemoryStore(): void {

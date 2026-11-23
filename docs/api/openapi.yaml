@@ -1,0 +1,1007 @@
+openapi: 3.0.3
+info:
+  title: MediFind Pharmacy Operations API
+  version: 1.0.0
+  description: >
+    Production-ready REST API specification for MediFind Pharmacy Operations.
+    Encompasses pharmacy onboarding, regulatory license verification, profile &
+    operating hours management, one-tap inventory workbench, audit history, and
+    freshness indicators.
+  contact:
+    name: MediFind Engineering Team (Developer 2 - Pharmacy Operations)
+    email: dev2.pharmacy@medifind.example
+
+servers:
+  - url: http://localhost:5000/api
+    description: Staging / Local API Gateway (Prefix /api)
+  - url: http://localhost:5000
+    description: Direct Service Root
+
+tags:
+  - name: Authentication & Identity
+    description: Public registration, login, session termination, and profile resolution.
+  - name: Pharmacy Application Lifecycle
+    description: Pharmacy owner onboarding, verification tracking, correction, and withdrawal.
+  - name: Pharmacy Profile & Hours
+    description: Verified pharmacy details, physical address, and weekly operating schedule.
+  - name: Pharmacy Inventory & Stock
+    description: One-tap stock status updates, quantity adjustment, and physical reconfirmation.
+  - name: Stock Audit Trail
+    description: Read-only append-only audit history of stock adjustments.
+  - name: Curated Catalogue & Public Discovery
+    description: Standardized medicine lookup and public availability search.
+  - name: Admin Verification & Governance
+    description: Administrative review queue, license verification, and quality threshold configuration.
+  - name: System Health & Diagnostics
+    description: Operational health probes and database connectivity diagnostics.
+  - name: Deferred Workflows (P1 Scope)
+    description: Routes intentionally deferred from P0 release scope.
+
+paths:
+  # ============================================================================
+  # System Health & Diagnostics
+  # ============================================================================
+  /health:
+    get:
+      tags: [System Health & Diagnostics]
+      summary: System health and readiness probe
+      description: Returns service uptime, database connectivity state, and execution mode.
+      responses:
+        '200':
+          description: Service is online and operational.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # ============================================================================
+  # Authentication & Identity
+  # ============================================================================
+  /auth/register:
+    post:
+      tags: [Authentication & Identity]
+      summary: Register a new account
+      description: Creates a synthetic user account. Role defaults to PHARMACY; public self-registration cannot create ADMIN accounts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterPayload'
+      responses:
+        '201':
+          description: Account created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessResponse'
+        '409':
+          description: Email address already registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Field validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /auth/login:
+    post:
+      tags: [Authentication & Identity]
+      summary: Sign in to obtain Bearer token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginPayload'
+      responses:
+        '200':
+          description: Authentication successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessResponse'
+        '401':
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Account suspended by compliance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /auth/logout:
+    post:
+      tags: [Authentication & Identity]
+      summary: Invalidate user session
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Signed out successfully.
+
+  /me:
+    get:
+      tags: [Authentication & Identity]
+      summary: Retrieve current authenticated profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Active session user data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '401':
+          description: Missing or expired token.
+
+  # ============================================================================
+  # Pharmacy Application Lifecycle
+  # ============================================================================
+  /owner/pharmacy-applications:
+    post:
+      tags: [Pharmacy Application Lifecycle]
+      summary: Submit pharmacy registration application
+      description: >
+        Submits onboarding application under server-enforced 'pending' status.
+        Validates DGDA drug license format and uniqueness.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PharmacyApplicationPayload'
+      responses:
+        '201':
+          description: Application submitted and queued for administrator review.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PharmacyApplicationEnvelope'
+        '401':
+          description: Unauthorized.
+        '403':
+          description: Account role not permitted or account suspended.
+        '409':
+          description: Duplicate DGDA drug license or active pending application exists.
+        '422':
+          description: Field validation failure.
+
+  /owner/pharmacy-application:
+    get:
+      tags: [Pharmacy Application Lifecycle]
+      summary: Read application verification status
+      description: Resolves the authenticated owner's active onboarding application.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Application status retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PharmacyApplicationEnvelope'
+        '404':
+          description: No application found (treated as unsubmitted by client).
+    patch:
+      tags: [Pharmacy Application Lifecycle]
+      summary: Correct and resubmit rejected application
+      description: >
+        Permitted only when application is in 'rejected' status or pre-approval editable state.
+        Forbidden once approved.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PharmacyApplicationPayload'
+      responses:
+        '200':
+          description: Application corrected and resubmitted to pending status.
+        '403':
+          description: Forbidden once approved (FORBIDDEN_APPROVED).
+        '422':
+          description: Validation error.
+    delete:
+      tags: [Pharmacy Application Lifecycle]
+      summary: Withdraw / delete unapproved application
+      description: Permitted strictly for 'pending' or 'rejected' applications. Deletion of verified records returns 403.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Application deleted successfully.
+        '403':
+          description: Forbidden for approved or suspended pharmacies (FORBIDDEN_APPROVED).
+
+  # ============================================================================
+  # Pharmacy Profile & Hours
+  # ============================================================================
+  /owner/pharmacy:
+    get:
+      tags: [Pharmacy Profile & Hours]
+      summary: Read authorized pharmacy profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PharmacyProfileEnvelope'
+        '404':
+          description: No authorized pharmacy profile found.
+    patch:
+      tags: [Pharmacy Profile & Hours]
+      summary: Update owner-editable profile fields
+      description: >
+        Updates allowlisted profile fields (name, phone, address, location, hours).
+        Regulatory drug licence fields are immutable here.
+        Supports optimistic concurrency via If-Match header.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatchHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PharmacyProfileUpdatePayload'
+      responses:
+        '200':
+          description: Profile updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PharmacyProfileEnvelope'
+        '403':
+          description: Forbidden if account is suspended or application is rejected.
+        '409':
+          description: Concurrency conflict (stale If-Match timestamp).
+        '422':
+          description: Attempting to modify protected license credentials or invalid coordinates.
+
+  /owner/pharmacy/opening-hours:
+    get:
+      tags: [Pharmacy Profile & Hours]
+      summary: Read structured weekly operating hours
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 7-day schedule returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyHoursEnvelope'
+    put:
+      tags: [Pharmacy Profile & Hours]
+      summary: Replace 7-day weekly schedule
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOpeningHoursPayload'
+      responses:
+        '200':
+          description: Schedule persisted atomically.
+        '422':
+          description: Invalid hours format or closeTime earlier than openTime.
+
+  # ============================================================================
+  # Pharmacy Inventory & Stock
+  # ============================================================================
+  /owner/summary:
+    get:
+      tags: [Pharmacy Inventory & Stock]
+      summary: Read operational summary & attention counts
+      description: Returns inventory status totals and items needing owner attention (stale or unverified).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Operational summary derived strictly from owner inventory.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerSummaryEnvelope'
+
+  /owner/inventory:
+    get:
+      tags: [Pharmacy Inventory & Stock]
+      summary: List pharmacy inventory
+      description: Supports filtering by search query, status, freshness, attention, and sorting.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Search medicine name, generic name, or strength
+        - name: status
+          in: query
+          schema: { type: string, enum: [all, available, low, out, unverified] }
+        - name: freshness
+          in: query
+          schema: { type: string, enum: [all, fresh, stale] }
+        - name: attention
+          in: query
+          schema: { type: boolean }
+          description: Filter exclusively for unverified or stale records
+        - name: sort
+          in: query
+          schema: { type: string, enum: [updated_desc, oldest_first, name_asc] }
+      responses:
+        '200':
+          description: Array of inventory records with separate freshness metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockInventoryListEnvelope'
+    post:
+      tags: [Pharmacy Inventory & Stock]
+      summary: Add curated medicine to inventory
+      description: >
+        Trust Boundary: Pharmacy must be in 'verified' status.
+        Enforces (pharmacyId, medicineId) uniqueness. Atomically records creation audit history.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddInventoryPayload'
+      responses:
+        '201':
+          description: Medicine added to inventory.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockItemEnvelope'
+        '403':
+          description: Forbidden if pharmacy is unverified (PHARMACY_NOT_VERIFIED).
+        '409':
+          description: Medicine already exists in pharmacy inventory (DUPLICATE_INVENTORY_ITEM).
+        '422':
+          description: Missing medicineId or invalid quantity.
+
+  /owner/inventory/{stockId}:
+    get:
+      tags: [Pharmacy Inventory & Stock]
+      summary: Read single stock item
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: stockId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Inventory item record.
+        '403':
+          description: Cross-tenant ownership violation.
+        '404':
+          description: Item not found.
+    patch:
+      tags: [Pharmacy Inventory & Stock]
+      summary: One-tap stock update (status, quantity, price, notes)
+      description: >
+        Updates stock availability status. Returns authoritative updatedAt timestamp and freshness.
+        Atomically records append-only StockHistory entry.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: stockId
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IfMatchHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStockPayload'
+      responses:
+        '200':
+          description: Stock updated and audit history appended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerStockUpdateEnvelope'
+        '403':
+          description: Forbidden if pharmacy is unverified or caller does not own pharmacy.
+        '409':
+          description: Optimistic concurrency collision (stale expectedUpdatedAt).
+        '422':
+          description: Invalid status enum or negative quantity.
+
+  /owner/inventory/{stockId}/reconfirm:
+    post:
+      tags: [Pharmacy Inventory & Stock]
+      summary: Reconfirm physical stock availability
+      description: >
+        Bumps updatedAt to current UTC timestamp, clears stale warning, restores 'unverified'
+        status to confirmed status ('available'), and appends audit history.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: stockId
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IfMatchHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconfirmStockPayload'
+      responses:
+        '200':
+          description: Stock reconfirmed as fresh.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerStockUpdateEnvelope'
+        '403':
+          description: Forbidden if unverified or wrong owner.
+
+  # ============================================================================
+  # Stock Audit Trail
+  # ============================================================================
+  /owner/inventory/{stockId}/history:
+    get:
+      tags: [Stock Audit Trail]
+      summary: Read stock history audit trail
+      description: Returns append-only chronological history sorted newest first. Supports cursor pagination.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: stockId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Audit log records returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockHistoryListEnvelope'
+
+  # ============================================================================
+  # Curated Catalogue & Public Discovery
+  # ============================================================================
+  /medicines:
+    get:
+      tags: [Curated Catalogue & Public Discovery]
+      summary: Search curated medicine catalogue
+      description: Active medicines lookup for owner inventory picker and public search.
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: form
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: Matching active medicines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicineListEnvelope'
+
+  /availability/search:
+    get:
+      tags: [Curated Catalogue & Public Discovery]
+      summary: Public customer availability search
+      description: >
+        Geospatial availability search. Strictly excludes unverified/pending pharmacies.
+        Reports stockStatus and freshness (isStale) separately.
+      parameters:
+        - name: query
+          in: query
+          schema: { type: string }
+        - name: lat
+          in: query
+          schema: { type: number }
+        - name: lng
+          in: query
+          schema: { type: number }
+        - name: radiusKm
+          in: query
+          schema: { type: number, default: 15 }
+        - name: availability
+          in: query
+          schema: { type: string, enum: [all, available, low, out] }
+      responses:
+        '200':
+          description: Nearby availability search results.
+
+  # ============================================================================
+  # Admin Verification & Governance
+  # ============================================================================
+  /admin/pharmacy-applications:
+    get:
+      tags: [Admin Verification & Governance]
+      summary: List submitted pharmacy applications
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Queue of pharmacy applications awaiting review.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminApplicationsListEnvelope'
+
+  /admin/pharmacy-applications/{applicationId}/approve:
+    post:
+      tags: [Admin Verification & Governance]
+      summary: Approve pharmacy application
+      description: Transitions application to 'verified' and registers verified pharmacy profile for discovery.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          description: Application approved and verified.
+
+  /admin/pharmacy-applications/{applicationId}/reject:
+    post:
+      tags: [Admin Verification & Governance]
+      summary: Reject pharmacy application
+      description: Rejects application with required feedback reason.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          description: Application marked rejected.
+        '422':
+          description: Reason is mandatory.
+
+  /admin/settings/quality-thresholds:
+    get:
+      tags: [Admin Verification & Governance]
+      summary: Read quality & freshness thresholds
+      responses:
+        '200':
+          description: Current threshold configuration.
+    patch:
+      tags: [Admin Verification & Governance]
+      summary: Update quality & freshness thresholds
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QualityThresholds'
+      responses:
+        '200':
+          description: Thresholds updated.
+
+  # ============================================================================
+  # Deferred Routes (P1 Scope Gates)
+  # ============================================================================
+  /reservations:
+    post:
+      tags: [Deferred Workflows (P1 Scope)]
+      summary: "[DEFERRED P1] Request medicine hold"
+      description: Deferred by Scope Gate until reservation hold lifecycle is finalized.
+      responses:
+        '501':
+          description: Not implemented in P0 release scope.
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IfMatchHeader:
+      name: If-Match
+      in: header
+      required: false
+      schema: { type: string }
+      description: Optimistic concurrency token (ISO 8601 UTC timestamp of record being updated).
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string }
+      description: Unique token to ensure duplicate network requests do not duplicate mutations or audit history.
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        mode: { type: string, enum: [mongodb, synthetic_development_fallback] }
+        database: { type: string, enum: [connected, disconnected] }
+        uptimeSeconds: { type: integer }
+        timestamp: { type: string, format: date-time }
+        version: { type: string }
+
+    RegisterPayload:
+      type: object
+      required: [name, email, password]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 6 }
+        phone: { type: string }
+        role: { type: string, enum: [CUSTOMER, PHARMACY], default: PHARMACY }
+
+    LoginPayload:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    AuthSuccessResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            email: { type: string }
+            role: { type: string, enum: [CUSTOMER, PHARMACY, ADMIN] }
+            status: { type: string }
+
+    UserProfileResponse:
+      type: object
+      properties:
+        user:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            email: { type: string }
+            role: { type: string }
+
+    PharmacyApplicationPayload:
+      type: object
+      required: [name, phone, streetAddress, city, area, formattedAddress, licenseNo, issuingAuthority, latitude, longitude, openingHours]
+      properties:
+        name: { type: string }
+        ownerName: { type: string }
+        phone: { type: string }
+        email: { type: string, format: email }
+        streetAddress: { type: string }
+        city: { type: string }
+        area: { type: string }
+        postalCode: { type: string }
+        formattedAddress: { type: string }
+        licenseNo: { type: string }
+        issuingAuthority: { type: string }
+        licenseExpiryDate: { type: string, format: date }
+        licenseType: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        location:
+          type: object
+          properties:
+            type: { type: string, enum: [Point] }
+            coordinates:
+              type: array
+              items: { type: number }
+              description: "[longitude, latitude] GeoJSON standard"
+        openingHours: { type: string }
+        notes: { type: string }
+
+    PharmacyApplicationEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            applicationId: { type: string }
+            pharmacyId: { type: string }
+            status: { type: string, enum: [pending, verified, rejected, suspended] }
+            submittedAt: { type: string, format: date-time }
+            message: { type: string }
+            verificationReason: { type: string }
+            decisionReason: { type: string }
+            nextStep: { type: string }
+
+    PharmacyProfileEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: string }
+            ownerId: { type: string }
+            name: { type: string }
+            phone: { type: string }
+            email: { type: string }
+            address: { type: string }
+            licenseNo: { type: string, description: "Protected read-only regulatory licence" }
+            status: { type: string, enum: [pending, verified, rejected, suspended] }
+            latitude: { type: number }
+            longitude: { type: number }
+            openingHours: { type: string }
+            updatedAt: { type: string, format: date-time }
+
+    PharmacyProfileUpdatePayload:
+      type: object
+      properties:
+        name: { type: string }
+        ownerName: { type: string }
+        phone: { type: string }
+        email: { type: string }
+        streetAddress: { type: string }
+        city: { type: string }
+        area: { type: string }
+        postalCode: { type: string }
+        formattedAddress: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        openingHours: { type: string }
+        expectedUpdatedAt: { type: string, format: date-time }
+
+    DaySchedule:
+      type: object
+      properties:
+        isOpen: { type: boolean }
+        openTime: { type: string, example: "08:30" }
+        closeTime: { type: string, example: "22:30" }
+        is24Hours: { type: boolean }
+
+    WeeklyHoursEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            monday: { $ref: '#/components/schemas/DaySchedule' }
+            tuesday: { $ref: '#/components/schemas/DaySchedule' }
+            wednesday: { $ref: '#/components/schemas/DaySchedule' }
+            thursday: { $ref: '#/components/schemas/DaySchedule' }
+            friday: { $ref: '#/components/schemas/DaySchedule' }
+            saturday: { $ref: '#/components/schemas/DaySchedule' }
+            sunday: { $ref: '#/components/schemas/DaySchedule' }
+
+    UpdateOpeningHoursPayload:
+      type: object
+      required: [structuredHours]
+      properties:
+        structuredHours:
+          type: object
+          properties:
+            monday: { $ref: '#/components/schemas/DaySchedule' }
+            tuesday: { $ref: '#/components/schemas/DaySchedule' }
+            wednesday: { $ref: '#/components/schemas/DaySchedule' }
+            thursday: { $ref: '#/components/schemas/DaySchedule' }
+            friday: { $ref: '#/components/schemas/DaySchedule' }
+            saturday: { $ref: '#/components/schemas/DaySchedule' }
+            sunday: { $ref: '#/components/schemas/DaySchedule' }
+        openingHours: { type: string }
+
+    StockInventoryListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockInventoryRecord'
+
+    StockInventoryRecord:
+      type: object
+      properties:
+        stockId: { type: string }
+        pharmacyId: { type: string }
+        medicineId: { type: string }
+        medicineName: { type: string }
+        genericName: { type: string }
+        strength: { type: string }
+        form: { type: string }
+        status: { type: string, enum: [available, low, out, unverified] }
+        quantity: { type: integer, minimum: 0 }
+        price: { type: number, minimum: 0 }
+        updatedAt: { type: string, format: date-time }
+        isStale: { type: boolean, description: "True if >= 24h since update without reconfirmation" }
+        freshness: { type: string, enum: [fresh, stale] }
+
+    AddInventoryPayload:
+      type: object
+      required: [medicineId, status]
+      properties:
+        medicineId: { type: string }
+        status: { type: string, enum: [available, low, out] }
+        quantity: { type: integer, minimum: 0 }
+        price: { type: number, minimum: 0 }
+        notes: { type: string }
+
+    StockItemEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/StockInventoryRecord'
+
+    UpdateStockPayload:
+      type: object
+      properties:
+        status: { type: string, enum: [available, low, out] }
+        quantity: { type: integer, minimum: 0 }
+        price: { type: number, minimum: 0 }
+        notes: { type: string }
+        expectedUpdatedAt: { type: string, format: date-time }
+
+    ServerStockUpdateEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            stockId: { type: string }
+            status: { type: string, enum: [available, low, out, unverified] }
+            updatedAt: { type: string, format: date-time }
+            quantity: { type: integer }
+            isStale: { type: boolean }
+            freshness: { type: string, enum: [fresh, stale] }
+
+    ReconfirmStockPayload:
+      type: object
+      properties:
+        status: { type: string, enum: [available, low, out], default: available }
+        quantity: { type: integer }
+        expectedUpdatedAt: { type: string, format: date-time }
+
+    StockHistoryRecord:
+      type: object
+      properties:
+        historyId: { type: string }
+        stockId: { type: string }
+        oldStatus: { type: string, nullable: true }
+        newStatus: { type: string }
+        oldQuantity: { type: integer, nullable: true }
+        newQuantity: { type: integer, nullable: true }
+        changedByName: { type: string }
+        changedAt: { type: string, format: date-time }
+
+    StockHistoryListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockHistoryRecord'
+        page:
+          type: object
+          properties:
+            limit: { type: integer }
+            nextCursor: { type: string, nullable: true }
+
+    OwnerSummaryEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            totalInventory: { type: integer }
+            availableCount: { type: integer }
+            lowCount: { type: integer }
+            outCount: { type: integer }
+            staleCount: { type: integer }
+            unverifiedCount: { type: integer }
+            attentionItems:
+              type: array
+              items:
+                $ref: '#/components/schemas/StockInventoryRecord'
+
+    MedicineListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              genericName: { type: string }
+              strength: { type: string }
+              form: { type: string }
+              manufacturer: { type: string }
+              prescriptionRequired: { type: boolean }
+              active: { type: boolean }
+
+    AdminApplicationsListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PharmacyApplicationEnvelope'
+
+    QualityThresholds:
+      type: object
+      properties:
+        staleThresholdHours: { type: integer, default: 24 }
+        unverifiedReportThreshold: { type: integer, default: 3 }
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: "VALIDATION_ERROR" }
+            message: { type: string, example: "Please review the highlighted fields." }
+            fields:
+              type: object
+              additionalProperties: { type: string }
+            requestId: { type: string }
