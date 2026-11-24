@@ -99,7 +99,8 @@ export class AuthService {
       throw err;
     }
 
-    const isMatch = await bcrypt.compare(data.password, user.passwordHash);
+    const passwordHash = user.passwordHash || user.password || '';
+    const isMatch = await bcrypt.compare(data.password, passwordHash);
     if (!isMatch) {
       const err = new Error('Invalid email or password.');
       (err as unknown as { status: number }).status = 401;

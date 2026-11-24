@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyToken, JwtPayload } from '../utils/jwt';
 
 export interface AuthRequest extends Request {
-  user?: JwtPayload;
+  user?: any;
 }
 
 /**
@@ -16,7 +16,7 @@ export const requireAuth = (req: AuthRequest, res: Response, next: NextFunction)
       success: false,
       error: {
         code: 'UNAUTHORIZED',
-        message: 'Authentication token required.',
+        message: 'Authentication token missing or invalid format.',
       },
     });
     return;
@@ -27,30 +27,13 @@ export const requireAuth = (req: AuthRequest, res: Response, next: NextFunction)
     const decoded = verifyToken(token);
     req.user = decoded;
     next();
-  } catch {
+  } catch (err) {
     res.status(401).json({
       success: false,
       error: {
         code: 'INVALID_TOKEN',
-        message: 'Invalid or expired session token.',
+        message: 'Token verification failed or expired.',
       },
     });
-    return;
   }
-};
-
-/**
- * Optional JWT authentication for guest vs logged-in browsing
- */
-export const optionalAuth = (req: AuthRequest, _res: Response, next: NextFunction): void => {
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    try {
-      const token = authHeader.split(' ')[1];
-      req.user = verifyToken(token);
-    } catch {
-      // Continue as guest
-    }
-  }
-  next();
 };

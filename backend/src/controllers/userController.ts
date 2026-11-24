@@ -126,7 +126,8 @@ export const changePassword = async (req: AuthRequest, res: Response, next: Next
       return;
     }
 
-    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    const passwordHash = user.passwordHash || user.password || '';
+    const isMatch = await bcrypt.compare(currentPassword, passwordHash);
     if (!isMatch) {
       res.status(400).json({
         success: false,

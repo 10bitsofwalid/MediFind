@@ -11,7 +11,6 @@ export interface IUser extends Document {
   name: string;
   email: string;
   phone?: string;
-  // Jawad uses passwordHash; main uses password — support both via password field
   password?: string;
   passwordHash?: string;
   role: UserRole;
@@ -42,13 +41,14 @@ export const UserSchema = new Schema<IUser>(
       type: String,
       trim: true,
     },
-    // Unified password field — works for both customer and pharmacy owner auth
     password: {
       type: String,
     },
-    // Alias maintained for Jawad's customer auth service (passwordHash)
     passwordHash: {
       type: String,
+      required: function (this: any) {
+        return !this.password;
+      },
     },
     role: {
       type: String,

@@ -10,10 +10,16 @@ import { getPharmacyOpenState } from '../utils/operatingHours';
 import { ENV } from '../config/env';
 import { findMedicineById, searchCatalogue, getAllInMemoryStocks } from './stockService';
 import { getAllInMemoryPharmacies, findPharmacyById } from './pharmacyService';
-import { calculateFreshness } from '../utils/freshness';
+import type { FreshnessCalculationResult } from '../utils/freshness';
 import { ApplicationError } from '../utils/errors';
 import type { StockStatus } from '../types/pharmacy';
 import type { Medicine as MedicineType } from '../types/stock';
+
+function calculateFreshness(updatedAt: Date, _now: Date): 'fresh' | 'stale' {
+  const ageMs = _now.getTime() - updatedAt.getTime();
+  const staleMs = (ENV.STALE_HOURS_THRESHOLD || 24) * 60 * 60 * 1000;
+  return ageMs >= staleMs ? 'stale' : 'fresh';
+}
 
 function isConnected(): boolean {
   return mongoose.connection.readyState === 1;
@@ -98,10 +104,8 @@ export class AvailabilityService {
 
     const searchRadiusKm = params.radiusKm || ENV.DEFAULT_SEARCH_RADIUS_KM;
 
-    // Query verified pharmacies — Jawad uses 'verificationStatus: Verified',
-    // main uses 'status: verified'. Query both so either convention works.
     const verifiedPharmacies = await Pharmacy.find({
-      $or: [{ verificationStatus: 'Verified' }, { status: 'verified' }],
+      verificationStatus: 'Verified',
       location: {
         $geoWithin: {
           $centerSphere: [[originLng, originLat], searchRadiusKm / 6371],
@@ -145,7 +149,7 @@ export class AvailabilityService {
         const ageMs = now.getTime() - new Date(updatedAt).getTime();
         const isStale = ageMs >= staleThresholdMs;
 
-        const { isOpen, hoursText } = getPharmacyOpenState(pharmacy.openingHours || '', now);
+    const { isOpen, hoursText } = getPharmacyOpenState(pharmacy.openingHours as any || '', now);
 
         return {
           id: `result-${pharmacy._id}`,
@@ -324,7 +328,7 @@ export async function searchNearbyAvailability(
       );
 
   const allStocks = isConnected()
-    ? await Stock.find(medicine ? { medicineId: medicine.id || medicine._id } : {}).lean()
+    ? await Stock.find(medicine ? { medicineId: medicine.id || (medicine as any)._id } : {}).lean()
     : getAllInMemoryStocks().filter(
         (s: any) => !medicine || String(s.medicineId) === String(medicine.id || (medicine as any)._id)
       );
@@ -376,7 +380,7 @@ export async function searchNearbyAvailability(
       updatedAt: updatedAt.toISOString(),
       isStale: freshness === 'stale',
       freshness,
-      medicineId: String(medicine?.id || medicine?._id || ''),
+      medicineId: String(medicine?.id || (medicine as any)?._id || ''),
       medicineName: (medicine as any)?.name || (medicine as any)?.brandName || '',
       genericName: (medicine as any)?.genericName || '',
       strength: (medicine as any)?.strength || '',

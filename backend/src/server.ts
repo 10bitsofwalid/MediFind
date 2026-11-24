@@ -227,7 +227,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   }
 
   if (err instanceof ApplicationError) {
-    res.status(err.statusCode || 400).json({ error: { code: err.code || 'APPLICATION_ERROR', message: err.message } });
+    res.status(err.status || 400).json({ error: { code: err.code || 'APPLICATION_ERROR', message: err.message } });
     return;
   }
 

@@ -13,7 +13,7 @@ export const seedCustomerStagingData = async (): Promise<void> => {
   // 1. Clear existing customer demo data
   await User.deleteMany({ email: { $in: ['patient.demo@medifind.com', 'owner.greencross@medifind.com'] } });
   await Medicine.deleteMany({ brandName: { $in: ['Napa', 'Napa Extra', 'Ace', 'Ceevit'] } });
-  await Pharmacy.deleteMany({ licenseNumber: { $in: ['LIC-DHK-001', 'LIC-DHK-002', 'LIC-DHK-003'] } });
+  await Pharmacy.deleteMany({ licenseNo: { $in: ['LIC-DHK-001', 'LIC-DHK-002', 'LIC-DHK-003'] } });
 
   // 2. Create customer and owner
   const passwordHash = await bcrypt.hash('Password123!', 10);
@@ -38,25 +38,25 @@ export const seedCustomerStagingData = async (): Promise<void> => {
   // 3. Create verified Dhaka pharmacies
   const p1 = await Pharmacy.create({
     name: 'Green Cross Pharmacy',
-    licenseNumber: 'LIC-DHK-001',
+    licenseNo: 'LIC-DHK-001',
     ownerId: owner._id,
     address: '14 Lake Road, Dhanmondi, Dhaka',
     area: 'Dhanmondi',
     phone: '+8801711000001',
     location: { type: 'Point', coordinates: [90.3742, 23.7461] },
-    verificationStatus: 'Verified',
+    status: 'verified',
     verifiedAt: new Date(),
   });
 
   const p2 = await Pharmacy.create({
     name: 'CarePoint Pharmacy',
-    licenseNumber: 'LIC-DHK-002',
+    licenseNo: 'LIC-DHK-002',
     ownerId: owner._id,
     address: '28 Road 7A, Dhanmondi, Dhaka',
     area: 'Dhanmondi',
     phone: '+8801711000002',
     location: { type: 'Point', coordinates: [90.3765, 23.7495] },
-    verificationStatus: 'Verified',
+    status: 'verified',
     verifiedAt: new Date(),
   });
 

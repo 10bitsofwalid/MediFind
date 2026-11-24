@@ -32,8 +32,8 @@ export const getNearbyAvailability = async (
       typeof availability === 'string'
         ? availability.split(',').map((s) => s.trim())
         : Array.isArray(availability)
-        ? (availability as string[])
-        : undefined;
+          ? (availability as string[])
+          : undefined;
 
     const data = await availabilityService.getNearbyAvailability({
       medicineId: medicineId as string,
