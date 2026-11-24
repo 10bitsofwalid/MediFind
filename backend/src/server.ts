@@ -1,4 +1,7 @@
 // backend/src/server.ts
+// Merged: main (pharmacy-ops full server) + Jawad (customer API startup)
+// This file is the MAIN SERVER used for production/development.
+// Jawad's customer routes are mounted via app.ts; main's pharmacy-ops routes remain.
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -8,13 +11,15 @@ import { isValidationError } from './validation/validationError';
 import { AuthorizationError } from './auth/ownership';
 import { ApplicationError } from './utils/errors';
 import ownerRouter from './routes/ownerRoutes';
-import authRouter from './routes/authRoutes';
+import { authRouter } from './routes/authRoutes';
 import { requireAuth } from './middleware/authMiddleware';
 import { meHandler } from './controllers/authController';
 import { getMedicinesHandler } from './controllers/stockController';
 import {
   searchNearbyPharmaciesHandler,
   getPharmacyAvailabilityHandler,
+  getNearbyAvailability,
+  getPharmacyStockDetail,
 } from './controllers/availabilityController';
 import {
   getQualityThresholdsHandler,
@@ -31,10 +36,12 @@ import { Stock } from './models/Stock';
 import { StockHistory } from './models/StockHistory';
 import { Medicine } from './models/Medicine';
 
+// Customer API app (Jawad) — mounted under /api/v1
+import { app as customerApp } from './app';
+
 // Load environment variables
 dotenv.config();
 
-// Environment Variable Validation & Startup Configuration
 export function validateEnvironment(): {
   port: number;
   nodeEnv: string;
@@ -44,7 +51,7 @@ export function validateEnvironment(): {
 } {
   const nodeEnv = process.env.NODE_ENV || 'development';
   const port = parseInt(process.env.PORT || '5000', 10);
-  const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/medifind';
+  const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/medifind';
   const jwtSecret = process.env.JWT_SECRET || 'medifind_jwt_secret_dev_key_2026';
 
   if ((nodeEnv === 'production' || nodeEnv === 'staging') && jwtSecret === 'medifind_jwt_secret_dev_key_2026') {
@@ -74,12 +81,7 @@ const MONGODB_URI = envConfig.mongoUri;
 
 // Core Security & Request Parsing Middleware
 app.use(helmet());
-app.use(
-  cors({
-    origin: envConfig.corsOrigins,
-    credentials: true,
-  })
-);
+app.use(cors({ origin: envConfig.corsOrigins, credentials: true }));
 app.use(express.json());
 
 // Privacy-Preserving Structured Request Logging
@@ -93,7 +95,6 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
   res.on('finish', () => {
     const durationMs = Date.now() - start;
-    // Suppress console output during automated test suites
     if (process.env.NODE_ENV !== 'test') {
       const statusGroup = Math.floor(res.statusCode / 100);
       const level = statusGroup === 5 ? 'ERROR' : statusGroup === 4 ? 'WARN' : 'INFO';
@@ -104,7 +105,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Root & Health Check Endpoints (Mounted at both / and /api)
+// Health Check Endpoints
 function getHealthPayload() {
   const isDbConnected = mongoose.connection.readyState === 1;
   return {
@@ -114,18 +115,19 @@ function getHealthPayload() {
     uptimeSeconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
     version: '1.0.0',
-    service: 'MediFind Pharmacy Backend',
+    service: 'MediFind Backend (Unified)',
   };
 }
 
 app.get('/', (_req: Request, res: Response) => {
   res.json({
-    name: 'MediFind Backend API',
+    name: 'MediFind Backend API (Unified)',
     version: '1.0.0',
     status: 'online',
     timestamp: new Date().toISOString(),
     endpoints: {
       health: '/api/health',
+      customerAPI: '/api/v1',
       pharmacy: '/api/owner/pharmacy',
       inventory: '/api/owner/inventory',
       application: '/api/owner/pharmacy-application',
@@ -135,19 +137,23 @@ app.get('/', (_req: Request, res: Response) => {
   });
 });
 
-app.get('/health', (_req: Request, res: Response) => {
-  res.json(getHealthPayload());
-});
+app.get('/health', (_req: Request, res: Response) => res.json(getHealthPayload()));
+app.get('/api/health', (_req: Request, res: Response) => res.json(getHealthPayload()));
 
-app.get('/api/health', (_req: Request, res: Response) => {
-  res.json(getHealthPayload());
-});
+// =========================================================================
+// Jawad's Customer API (mounted under /api/v1)
+// =========================================================================
+app.use('/api/v1', customerApp);
 
-// Curated Catalogue Search Endpoints (GET /medicines and GET /api/medicines)
+// =========================================================================
+// main's Pharmacy-Ops Routes
+// =========================================================================
+
+// Curated Catalogue Search
 app.get('/medicines', getMedicinesHandler);
 app.get('/api/medicines', getMedicinesHandler);
 
-// Customer-Facing Proximity & Availability Discovery Endpoints
+// Customer Proximity & Availability Discovery
 app.get('/pharmacies/nearby', searchNearbyPharmaciesHandler);
 app.get('/api/pharmacies/nearby', searchNearbyPharmaciesHandler);
 app.get('/availability/search', searchNearbyPharmaciesHandler);
@@ -155,13 +161,13 @@ app.get('/api/availability/search', searchNearbyPharmaciesHandler);
 app.get('/pharmacies/:pharmacyId/availability', getPharmacyAvailabilityHandler);
 app.get('/api/pharmacies/:pharmacyId/availability', getPharmacyAvailabilityHandler);
 
-// Admin Configuration Endpoints (Developer 3 Coordination Agreement)
+// Admin Configuration Endpoints
 app.get('/admin/settings/quality-thresholds', getQualityThresholdsHandler);
 app.get('/api/admin/settings/quality-thresholds', getQualityThresholdsHandler);
 app.patch('/admin/settings/quality-thresholds', updateQualityThresholdsHandler);
 app.patch('/api/admin/settings/quality-thresholds', updateQualityThresholdsHandler);
 
-// Admin Pharmacy Verification Queue & Moderation Endpoints
+// Admin Pharmacy Verification Queue
 app.get('/admin/pharmacy-applications', listPharmacyApplicationsHandler);
 app.get('/api/admin/pharmacy-applications', listPharmacyApplicationsHandler);
 app.post('/admin/pharmacy-applications/:applicationId/approve', approvePharmacyApplicationHandler);
@@ -173,13 +179,13 @@ app.post('/api/admin/pharmacies/:pharmacyId/suspend', suspendPharmacyHandler);
 app.post('/admin/pharmacies/:pharmacyId/reactivate', reactivatePharmacyHandler);
 app.post('/api/admin/pharmacies/:pharmacyId/reactivate', reactivatePharmacyHandler);
 
-// Authentication & User Identity Endpoints (/api/auth and /auth, /api/me and /me)
+// Authentication & User Identity
 app.use('/auth', authRouter);
 app.use('/api/auth', authRouter);
 app.get('/me', requireAuth, meHandler);
 app.get('/api/me', requireAuth, meHandler);
 
-// Pharmacy Owner Operations Namespace (/api/owner and /owner)
+// Pharmacy Owner Operations Namespace
 app.use('/api/owner', ownerRouter);
 app.use('/owner', ownerRouter);
 
@@ -193,79 +199,46 @@ app.use((req: Request, res: Response) => {
   });
 });
 
-// Global Normalized Error Handler (Field-level 422, Auth & Business rules envelopes)
+// Global Error Handler
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  // SyntaxError from express.json() for malformed JSON payloads
   if (err instanceof SyntaxError && 'status' in err && (err as { status?: number }).status === 400) {
-    res.status(400).json({
-      error: {
-        code: 'INVALID_REQUEST',
-        message: 'Malformed JSON payload in request body.',
-      },
-    });
+    res.status(400).json({ error: { code: 'INVALID_REQUEST', message: 'Malformed JSON payload in request body.' } });
     return;
   }
 
-  // Mongo duplicate key error (E11000)
   if (err && typeof err === 'object' && 'code' in err && (err as { code?: number }).code === 11000) {
-    res.status(409).json({
-      error: {
-        code: 'CONFLICT',
-        message: 'A duplicate record already exists in the system.',
-      },
-    });
+    res.status(409).json({ error: { code: 'CONFLICT', message: 'A duplicate record already exists in the system.' } });
     return;
   }
 
-  // Database outage or connection timeout
-  if (
-    err instanceof mongoose.Error &&
-    (err.name === 'MongooseServerSelectionError' ||
-      err.name === 'MongooseTimeoutError' ||
-      err.message.includes('buffering timed out'))
-  ) {
-    res.status(503).json({
-      error: {
-        code: 'DATABASE_ERROR',
-        message: 'Database service is temporarily unavailable. Please try again.',
-      },
-    });
+  if (err && typeof err === 'object' && 'name' in err && (err as any).name === 'MongoNetworkError') {
+    res.status(503).json({ error: { code: 'DATABASE_UNAVAILABLE', message: 'Database temporarily unavailable. Please try again shortly.' } });
     return;
   }
 
   if (isValidationError(err)) {
-    res.status(err.status || 422).json(err.toJSON());
+    res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: err.message, fields: err.fields } });
     return;
   }
 
   if (err instanceof AuthorizationError) {
-    res.status(err.status || 403).json(err.toJSON());
+    res.status(403).json({ error: { code: 'AUTHORIZATION_ERROR', message: err.message } });
     return;
   }
 
   if (err instanceof ApplicationError) {
-    res.status(err.status).json(err.toJSON());
+    res.status(err.statusCode || 400).json({ error: { code: err.code || 'APPLICATION_ERROR', message: err.message } });
     return;
   }
 
   if (err && typeof err === 'object' && 'code' in err && 'status' in err) {
-    const e = err as {
-      status?: number;
-      code?: string;
-      message?: string;
-      fields?: Record<string, string>;
-    };
+    const e = err as { status?: number; code?: string; message?: string; fields?: Record<string, string> };
     res.status(e.status || 500).json({
-      error: {
-        code: e.code || 'SERVER_ERROR',
-        message: e.message || 'An error occurred.',
-        ...(e.fields ? { fields: e.fields } : {}),
-      },
+      error: { code: e.code || 'SERVER_ERROR', message: e.message || 'An error occurred.', ...(e.fields ? { fields: e.fields } : {}) },
     });
     return;
   }
 
-  // Safe internal server error fallback: never leak stack traces or credentials
   const message =
     process.env.NODE_ENV === 'production'
       ? 'An unexpected internal server error occurred.'
@@ -273,15 +246,9 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
       ? err.message
       : 'An unexpected internal server error occurred.';
 
-  res.status(500).json({
-    error: {
-      code: 'SERVER_ERROR',
-      message,
-    },
-  });
+  res.status(500).json({ error: { code: 'SERVER_ERROR', message } });
 });
 
-// Safe Index Synchronization Helper (Non-destructive)
 export async function syncDatabaseIndexes(): Promise<void> {
   if (mongoose.connection.readyState === 1) {
     await Promise.all([
@@ -295,13 +262,9 @@ export async function syncDatabaseIndexes(): Promise<void> {
   }
 }
 
-// Database Connection & Server Startup
 async function startServer() {
   try {
-    // Attempt MongoDB connection if configured
-    await mongoose.connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 2000,
-    });
+    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 2000 });
     console.log(`[Database] Connected to MongoDB at ${MONGODB_URI}`);
     await syncDatabaseIndexes();
   } catch (err: unknown) {
@@ -311,13 +274,12 @@ async function startServer() {
   }
 
   app.listen(PORT, () => {
-    console.log(`[Server] MediFind Backend listening on http://localhost:${PORT}`);
+    console.log(`[Server] MediFind Unified Backend listening on http://localhost:${PORT}`);
+    console.log(`[Server] Customer API: http://localhost:${PORT}/api/v1`);
     console.log(`[Server] Health check: http://localhost:${PORT}/api/health`);
-    console.log(`[Server] Pharmacy Profile: http://localhost:${PORT}/api/owner/pharmacy`);
   });
 }
 
-// Start if executed directly and not running under a test runner or CLI script
 const isRunningTestsOrScript =
   process.env.NODE_ENV === 'test' ||
   process.argv.some((arg) => arg.includes('test') || arg.includes('walkthrough') || arg.includes('seed'));

@@ -1,12 +1,89 @@
 // frontend/src/features/customer/HomePage.tsx
-import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { CustomerSearchBar } from './components/CustomerSearchBar';
+import { MobileResultsPreview } from './components/MobileResultsPreview';
+import { CustomerMapView } from './components/CustomerMapView';
 import { DisclaimerBanner } from '../../components/DisclaimerBanner';
-import { MapPin } from 'lucide-react';
+import { MapPin, Store } from 'lucide-react';
+import type { NearbyPharmacyResult } from './types';
+
+// Seeded initial preview data matching UI Design Page 2, Page 4 & Page 11
+const DEMO_PREVIEW_RESULTS: NearbyPharmacyResult[] = [
+  {
+    id: 'demo-res-1',
+    pharmacyId: 'pharma-1',
+    pharmacyName: 'Green Cross Pharmacy',
+    isVerified: true,
+    address: '14 Lake Road, Dhanmondi, Dhaka',
+    phone: '+8801711000001',
+    latitude: 23.7461,
+    longitude: 90.3742,
+    distanceKm: 1.2,
+    isOpen: true,
+    openingHoursText: 'Open until 10:00 PM',
+    stockStatus: 'available',
+    quantity: 14,
+    updatedAt: new Date(Date.now() - 12 * 60 * 1000).toISOString(), // 12 min ago
+    isStale: false,
+    medicineId: 'med-paracetamol-500',
+    medicineName: 'Paracetamol 500 mg',
+    genericName: 'Paracetamol',
+    strength: '500 mg',
+    form: 'Tablet',
+    isDemoData: true,
+  },
+  {
+    id: 'demo-res-2',
+    pharmacyId: 'pharma-2',
+    pharmacyName: 'CarePoint Pharmacy',
+    isVerified: true,
+    address: '28 Road 7A, Dhanmondi, Dhaka',
+    phone: '+8801711000002',
+    latitude: 23.7505,
+    longitude: 90.3795,
+    distanceKm: 2.4,
+    isOpen: true,
+    openingHoursText: 'Open until 9:00 PM',
+    stockStatus: 'low',
+    quantity: 4,
+    updatedAt: new Date(Date.now() - 34 * 60 * 1000).toISOString(), // 34 min ago
+    isStale: false,
+    medicineId: 'med-paracetamol-500',
+    medicineName: 'Paracetamol 500 mg',
+    genericName: 'Paracetamol',
+    strength: '500 mg',
+    form: 'Tablet',
+    isDemoData: true,
+  },
+  {
+    id: 'demo-res-3',
+    pharmacyId: 'pharma-3',
+    pharmacyName: 'CityWell Pharmacy',
+    isVerified: true,
+    address: 'Plot 12, Mirpur Road, Dhaka',
+    phone: '+8801711000003',
+    latitude: 23.7550,
+    longitude: 90.3850,
+    distanceKm: 3.1,
+    isOpen: true,
+    openingHoursText: 'Open until 11:00 PM',
+    stockStatus: 'available',
+    quantity: 8,
+    updatedAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(), // 26h ago -> Stale
+    isStale: true,
+    medicineId: 'med-paracetamol-500',
+    medicineName: 'Paracetamol 500 mg',
+    genericName: 'Paracetamol',
+    strength: '500 mg',
+    form: 'Tablet',
+    isDemoData: true,
+  },
+];
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
+  const [activeCallNumber, setActiveCallNumber] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = 'MediFind - Find Medicine Availability Near You';
@@ -22,12 +99,22 @@ export const HomePage: React.FC = () => {
     navigate(`/search?${params.toString()}`);
   };
 
+  const handleSelectPharmacy = (pharmacyId: string) => {
+    navigate(`/search?pharmacyId=${pharmacyId}&q=Paracetamol`);
+  };
+
+  const handleCallPharmacy = (phone: string) => {
+    setActiveCallNumber(phone);
+    window.location.href = `tel:${phone}`;
+  };
+
   return (
     <div
       style={{
-        maxWidth: '1100px',
-        margin: '0 auto',
-        padding: '16px',
+        width: '100%',
+        maxWidth: '100%',
+        margin: '0',
+        padding: '24px 32px',
         minHeight: 'calc(100vh - 64px)',
         display: 'flex',
         flexDirection: 'column',
@@ -87,12 +174,83 @@ export const HomePage: React.FC = () => {
       </header>
 
       {/* Main Search Component */}
-      <CustomerSearchBar onSearch={handleSearch} />
+      <CustomerSearchBar onSearch={handleSearch} initialQuery="Paracetamol 500 mg" initialArea="Dhanmondi, Dhaka" />
 
       {/* Top Banner Disclaimer */}
       <DisclaimerBanner variant="banner" />
 
-      {/* 3 Step Process Section */}
+      {/* Wireframe Discovery Grid: Content & Map/Results Preview */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: '20px',
+          alignItems: 'start',
+        }}
+      >
+        {/* Left Column: Mobile & Results Wireframe Preview */}
+        <div>
+          <MobileResultsPreview
+            results={DEMO_PREVIEW_RESULTS}
+            onSelectPharmacy={handleSelectPharmacy}
+            onCallPharmacy={handleCallPharmacy}
+          />
+        </div>
+
+        {/* Right Column: Visual Map Preview Card (per UI Design Page 2) */}
+        <div
+          className="card"
+          style={{
+            backgroundColor: 'var(--color-surface-panel)',
+            border: '1px solid var(--color-border-default)',
+            borderRadius: 'var(--radius-xl)',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3
+              style={{
+                fontSize: '13px',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'var(--color-text-secondary)',
+                margin: 0,
+              }}
+            >
+              Map Preview
+            </h3>
+            <span
+              style={{
+                fontSize: '11px',
+                color: 'var(--color-action-primary)',
+                fontWeight: 600,
+              }}
+            >
+              Interactive in search
+            </span>
+          </div>
+
+          {/* Interactive Live Map Preview */}
+          <CustomerMapView
+            results={DEMO_PREVIEW_RESULTS}
+            onSelectPharmacy={handleSelectPharmacy}
+            onCallPharmacy={handleCallPharmacy}
+            centerLatitude={23.7505}
+            centerLongitude={90.3795}
+            height="260px"
+          />
+
+          <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>
+            Map and list show the same verified pharmacies and stock states. Real GPS location requested with user consent.
+          </div>
+        </div>
+      </div>
+
+      {/* 3 Step Process Section (per UI Design Page 2) */}
       <section aria-label="How MediFind works">
         <h2
           style={{
@@ -193,6 +351,56 @@ export const HomePage: React.FC = () => {
           </div>
         </div>
       </section>
+
+      {/* For Pharmacy Teams Banner (cross-linking to Dev 2 flow per UI Design p.2) */}
+      <aside
+        style={{
+          marginTop: 'auto',
+          padding: '16px 20px',
+          borderRadius: 'var(--radius-lg)',
+          backgroundColor: 'var(--color-surface-panel)',
+          border: '1px solid var(--color-border-default)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+        }}
+      >
+        <div>
+          <strong style={{ fontSize: '14px', color: 'var(--color-text-primary)', display: 'block' }}>
+            For pharmacy teams
+          </strong>
+          <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+            Manage a verified pharmacy profile, update stock in one tap, and handle reservation requests.
+          </span>
+        </div>
+        <Link
+          to="/pharmacy/register"
+          className="btn-secondary"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '13px',
+            fontWeight: 600,
+            padding: '8px 16px',
+            borderRadius: 'var(--radius-md)',
+            textDecoration: 'none',
+          }}
+        >
+          <Store size={15} aria-hidden="true" />
+          <span>Explore pharmacy tools</span>
+        </Link>
+      </aside>
+
+      {/* Screen Reader status alert for telephone triggers */}
+      {activeCallNumber && (
+        <div role="status" className="sr-only">
+          Dialing {activeCallNumber}
+        </div>
+      )}
     </div>
   );
 };
+

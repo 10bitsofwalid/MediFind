@@ -1,12 +1,17 @@
 // backend/src/models/Stock.ts
+// Merged: Jawad (customer availability) + main (pharmacy-ops inventory)
+// Unified schema supports both customer discovery and pharmacy owner stock management
 import mongoose, { Document, Model, Schema, Types } from 'mongoose';
-import type { StockStatus } from '../types/pharmacy';
+
+export type StockStatus = 'available' | 'low' | 'out' | 'unverified';
 
 export interface IStock extends Document {
   stockId?: string;
   pharmacyId: Types.ObjectId | string;
   medicineId: Types.ObjectId | string;
-  status: StockStatus;
+  // Jawad uses stockStatus; main uses status — both supported
+  stockStatus?: StockStatus;
+  status?: StockStatus;
   quantity?: number;
   price?: number;
   notes?: string;
@@ -32,17 +37,25 @@ export const StockSchema = new Schema<IStock>(
       ref: 'Medicine',
       required: true,
     },
+    // Unified status field — both customer and pharmacy-ops use this
     status: {
       type: String,
       enum: ['available', 'low', 'out', 'unverified'],
       default: 'available',
       required: true,
+      index: true,
+    },
+    // Alias for Jawad's customer availability service
+    stockStatus: {
+      type: String,
+      enum: ['available', 'low', 'out', 'unverified'],
     },
     quantity: {
       type: Number,
       min: [0, 'Quantity must be a whole number of 0 or greater.'],
       validate: {
-        validator: (v: number | null | undefined) => v === undefined || v === null || Number.isInteger(v),
+        validator: (v: number | null | undefined) =>
+          v === undefined || v === null || Number.isInteger(v),
         message: 'Quantity must be a whole number of 0 or greater.',
       },
     },
@@ -75,19 +88,14 @@ export const StockSchema = new Schema<IStock>(
   }
 );
 
-// Pre-save hook: ensure updatedAt is refreshed on modification
+// Pre-save hook: sync stockStatus <-> status and refresh updatedAt
 StockSchema.pre('save', function () {
   this.updatedAt = new Date();
+  // keep both aliases in sync
+  if (this.status && !this.stockStatus) this.stockStatus = this.status;
+  if (this.stockStatus && !this.status) this.status = this.stockStatus;
 });
 
-/**
- * Database Indexes & Documentation:
- * 1. (pharmacyId, medicineId) [UNIQUE]: Compound unique index preventing duplicate inventory records
- *    for the same catalogue medicine at a single pharmacy. Ensures that each medicine is listed at most once.
- * 2. (pharmacyId, status): Accelerates inventory filtering by status (Available, Low Stock, Out of Stock, Unverified).
- * 3. (pharmacyId, updatedAt): Supports default inventory sorting (newest reports first) and freshness evaluation.
- * 4. (medicineId, status): Supports inverse lookup across all pharmacies stocking a specific medicine for customer search.
- */
 StockSchema.index(
   { pharmacyId: 1, medicineId: 1 },
   { unique: true, name: 'idx_stock_pharmacy_medicine_unique' }

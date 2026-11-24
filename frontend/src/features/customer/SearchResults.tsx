@@ -45,6 +45,7 @@ export const SearchResults: React.FC = () => {
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false);
   const [reportingPharmacy, setReportingPharmacy] = useState<NearbyPharmacyResult | null>(null);
   const [alertTargetMedicine, setAlertTargetMedicine] = useState<string | null>(null);
+  const [activeRoutingTarget, setActiveRoutingTarget] = useState<NearbyPharmacyResult | null>(null);
 
   // Synchronize view mode with URL search param
   const viewMode: ViewMode = viewParam === 'map' ? 'map' : 'list';
@@ -189,6 +190,12 @@ export const SearchResults: React.FC = () => {
     setSelectedPharmacyId(pharmacyId);
   };
 
+  const handleDirections = (pharmacy: NearbyPharmacyResult) => {
+    setSelectedPharmacyId(pharmacy.pharmacyId);
+    setActiveRoutingTarget(pharmacy);
+    setViewMode('map');
+  };
+
   const handleCallPharmacy = (phone: string) => {
     const cleanPhone = sanitizePhoneNumber(phone) || phone;
     setActiveCallNumber(cleanPhone);
@@ -215,9 +222,10 @@ export const SearchResults: React.FC = () => {
   return (
     <div
       style={{
-        maxWidth: '1100px',
-        margin: '0 auto',
-        padding: '16px',
+        width: '100%',
+        maxWidth: '100%',
+        margin: '0',
+        padding: '24px 32px',
         minHeight: 'calc(100vh - 64px)',
         display: 'flex',
         flexDirection: 'column',
@@ -392,6 +400,7 @@ export const SearchResults: React.FC = () => {
               onRetry={() => fetchResults(queryParam, areaParam)}
               onSelectPharmacy={handleSelectPharmacy}
               onCallPharmacy={handleCallPharmacy}
+              onDirections={handleDirections}
               onSelectAlternative={handleSelectAlternative}
               onReportDiscrepancy={(pharmacy) => setReportingPharmacy(pharmacy)}
               onSubscribeAlert={(query) => setAlertTargetMedicine(query)}
@@ -404,6 +413,13 @@ export const SearchResults: React.FC = () => {
               onCallPharmacy={handleCallPharmacy}
               centerLatitude={geo.latitude ?? undefined}
               centerLongitude={geo.longitude ?? undefined}
+              userLocation={
+                geo.latitude && geo.longitude
+                  ? { lat: geo.latitude, lng: geo.longitude }
+                  : undefined
+              }
+              activeRouteDestination={activeRoutingTarget}
+              onClearRoute={() => setActiveRoutingTarget(null)}
             />
           )}
         </div>

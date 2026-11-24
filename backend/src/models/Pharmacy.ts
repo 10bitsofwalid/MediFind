@@ -1,4 +1,6 @@
 // backend/src/models/Pharmacy.ts
+// Merged: main (pharmacy-ops) + Jawad (customer geospatial discovery)
+// Unified schema supports both pharmacy owner management and customer discovery
 import mongoose, { Document, Model, Schema, Types } from 'mongoose';
 import type {
   LocationGeoJSON,
@@ -29,7 +31,9 @@ export interface IPharmacy extends Document {
   longitude?: number;
   openingHours: string;
   structuredHours?: WeeklyHours;
+  // main uses lowercase 'status'; Jawad uses 'verificationStatus' — both supported
   status: VerificationStatus;
+  verificationStatus?: string;
   verificationReason?: string;
   decisionReason?: string;
   nextStep?: string;
@@ -105,11 +109,17 @@ export const PharmacySchema = new Schema<IPharmacy>(
     longitude: { type: Number, min: -180, max: 180 },
     openingHours: { type: String, required: true, trim: true },
     structuredHours: { type: Schema.Types.Mixed },
+    // Primary status field (lowercase — pharmacy-ops convention)
     status: {
       type: String,
       enum: ['pending', 'verified', 'rejected', 'suspended'],
       default: 'pending',
       required: true,
+    },
+    // Alias for Jawad's customer discovery service (title-case convention)
+    verificationStatus: {
+      type: String,
+      enum: ['Pending', 'Verified', 'Rejected', 'Suspended'],
     },
     verificationReason: { type: String, trim: true },
     decisionReason: { type: String, trim: true },
@@ -129,12 +139,13 @@ export const PharmacySchema = new Schema<IPharmacy>(
   }
 );
 
-// Pre-validate hook: normalize licence number and synchronize coordinates
+// Pre-validate: sync aliases and normalize fields
 PharmacySchema.pre('validate', function () {
   if (this.licenseNo && !this.normalizedLicenseNo) {
     this.normalizedLicenseNo = normalizeLicenseNo(this.licenseNo);
   }
 
+  // Sync location coordinates <-> lat/lng
   if (this.location && Array.isArray(this.location.coordinates) && this.location.coordinates.length >= 2) {
     if (this.longitude === undefined) this.longitude = this.location.coordinates[0];
     if (this.latitude === undefined) this.latitude = this.location.coordinates[1];
@@ -148,17 +159,19 @@ PharmacySchema.pre('validate', function () {
   if (!this.formattedAddress && this.address) {
     this.formattedAddress = this.address;
   }
+
+  // Sync verificationStatus (Jawad title-case) <-> status (main lowercase)
+  if (this.status && !this.verificationStatus) {
+    const map: Record<string, string> = {
+      pending: 'Pending', verified: 'Verified', rejected: 'Rejected', suspended: 'Suspended',
+    };
+    this.verificationStatus = map[this.status] || this.status;
+  }
+  if (this.verificationStatus && !this.status) {
+    this.status = this.verificationStatus.toLowerCase() as VerificationStatus;
+  }
 });
 
-/**
- * Database Indexes & Documentation:
- * 1. location ('2dsphere'): Geospatial index enabling efficient proximity searches ($near, $geoNear, $geoWithin)
- *    for customer discovery within radius (e.g. 5 km radius from user's GPS/preset location).
- * 2. normalizedLicenseNo (unique): Enforces global DGDA drug licence number uniqueness across all pharmacies.
- * 3. ownerId (unique): Enforces 1:1 owner-to-pharmacy cardinality constraint (SRS BR-02), preventing multi-pharmacy
- *    ownership until multi-tenancy is approved for Phase 2.
- * 4. status: Optimizes availability queries to ensure customer discovery queries filter strictly for 'verified' pharmacies.
- */
 PharmacySchema.index({ location: '2dsphere' }, { name: 'idx_pharmacy_location_2dsphere' });
 PharmacySchema.index(
   { normalizedLicenseNo: 1 },

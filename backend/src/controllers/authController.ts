@@ -1,4 +1,7 @@
 // backend/src/controllers/authController.ts
+// Merged: main (pharmacy-ops handlers) + Jawad (customer auth handlers)
+// Exports all named exports needed by both server.ts (main) and app.ts (Jawad)
+
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -6,6 +9,7 @@ import mongoose, { Types } from 'mongoose';
 import { User, IUser } from '../models/User';
 import { ApplicationError } from '../utils/errors';
 import { wrapEnvelope } from '../utils/responseEnvelope';
+import { authService } from '../services/authService';
 
 const inMemoryUsers = new Map<string, any>();
 
@@ -19,9 +23,6 @@ export function clearInMemoryUsers(): void {
   inMemoryUsers.clear();
 }
 
-/**
- * Normalizes user role for backend auth.
- */
 function resolveRole(roleRaw: unknown): 'CUSTOMER' | 'PHARMACY' | 'ADMIN' {
   if (typeof roleRaw !== 'string') return 'PHARMACY';
   const cleaned = roleRaw.trim().toUpperCase().replace(/[\s-]+/g, '_');
@@ -30,9 +31,10 @@ function resolveRole(roleRaw: unknown): 'CUSTOMER' | 'PHARMACY' | 'ADMIN' {
   return 'PHARMACY';
 }
 
-/**
- * Handles POST /auth/register
- */
+// ============================================================================
+// main's pharmacy-ops handlers (registerHandler, loginHandler, etc.)
+// ============================================================================
+
 export async function registerHandler(
   req: Request,
   res: Response,
@@ -56,11 +58,7 @@ export async function registerHandler(
 
     if (Object.keys(fields).length > 0) {
       res.status(422).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: Object.values(fields)[0],
-          fields,
-        },
+        error: { code: 'VALIDATION_ERROR', message: Object.values(fields)[0], fields },
       });
       return;
     }
@@ -69,7 +67,6 @@ export async function registerHandler(
     const cleanName = name.trim();
     const resolvedRole = resolveRole(role);
 
-    // Duplicate check
     let existingUser: any = null;
     if (isConnected()) {
       existingUser = await User.findOne({ email: cleanEmail }).lean();
@@ -117,39 +114,22 @@ export async function registerHandler(
     }
 
     const token = jwt.sign(
-      {
-        userId,
-        id: userId,
-        role: resolvedRole,
-        email: cleanEmail,
-        name: cleanName,
-      },
+      { userId, id: userId, role: resolvedRole, email: cleanEmail, name: cleanName },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
     const safeUser = {
-      id: userId,
-      name: cleanName,
-      email: cleanEmail,
-      phone: userObj.phone,
-      role: resolvedRole,
-      status: 'active',
+      id: userId, name: cleanName, email: cleanEmail,
+      phone: userObj.phone, role: resolvedRole, status: 'active',
     };
 
-    res.status(201).json({
-      token,
-      user: safeUser,
-      data: { token, user: safeUser },
-    });
+    res.status(201).json({ token, user: safeUser, data: { token, user: safeUser } });
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * Handles POST /auth/login
- */
 export async function loginHandler(
   req: Request,
   res: Response,
@@ -160,10 +140,7 @@ export async function loginHandler(
 
     if (!email || !password) {
       res.status(401).json({
-        error: {
-          code: 'INVALID_CREDENTIALS',
-          message: 'Invalid email address or password.',
-        },
+        error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email address or password.' },
       });
       return;
     }
@@ -179,21 +156,16 @@ export async function loginHandler(
 
     if (!user) {
       res.status(401).json({
-        error: {
-          code: 'INVALID_CREDENTIALS',
-          message: 'Invalid email address or password.',
-        },
+        error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email address or password.' },
       });
       return;
     }
 
-    const passwordMatch = await bcrypt.compare(String(password), user.password);
+    const passwordHash = user.password || user.passwordHash;
+    const passwordMatch = passwordHash ? await bcrypt.compare(String(password), passwordHash) : false;
     if (!passwordMatch) {
       res.status(401).json({
-        error: {
-          code: 'INVALID_CREDENTIALS',
-          message: 'Invalid email address or password.',
-        },
+        error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email address or password.' },
       });
       return;
     }
@@ -210,57 +182,35 @@ export async function loginHandler(
 
     const userId = String(user.id || user._id);
     const token = jwt.sign(
-      {
-        userId,
-        id: userId,
-        role: user.role,
-        email: user.email,
-        name: user.name,
-      },
+      { userId, id: userId, role: user.role, email: user.email, name: user.name },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
     const safeUser = {
-      id: userId,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      status: user.status || 'active',
+      id: userId, name: user.name, email: user.email, phone: user.phone,
+      role: user.role, status: user.status || 'active',
       pharmacyId: user.pharmacyId ? String(user.pharmacyId) : undefined,
     };
 
-    res.status(200).json({
-      token,
-      user: safeUser,
-      data: { token, user: safeUser },
-    });
+    res.status(200).json({ token, user: safeUser, data: { token, user: safeUser } });
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * Handles POST /auth/logout
- */
 export async function logoutHandler(
   _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
   try {
-    res.status(200).json({
-      data: { message: 'Signed out successfully.' },
-    });
+    res.status(200).json({ data: { message: 'Signed out successfully.' } });
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * Handles GET /me
- */
 export async function meHandler(
   req: Request,
   res: Response,
@@ -274,10 +224,7 @@ export async function meHandler(
       user = await User.findById(userId).lean();
     } else {
       for (const u of inMemoryUsers.values()) {
-        if (String(u.id || u._id) === userId) {
-          user = u;
-          break;
-        }
+        if (String(u.id || u._id) === userId) { user = u; break; }
       }
     }
 
@@ -291,11 +238,75 @@ export async function meHandler(
       pharmacyId: user?.pharmacyId ? String(user.pharmacyId) : undefined,
     };
 
-    res.status(200).json({
-      user: safeUser,
-      data: { user: safeUser },
-    });
+    res.status(200).json({ user: safeUser, data: { user: safeUser } });
   } catch (err) {
     next(err);
   }
 }
+
+// ============================================================================
+// Jawad's customer auth handlers (register, login, logout)
+// These delegate to authService which uses passwordHash convention
+// ============================================================================
+
+export const register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { email, password, name, phone, role } = req.body;
+    if (!email || !password || !name) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Email, password, and name are required.' },
+      });
+      return;
+    }
+
+    const result = await authService.register({ email, password, name, phone, role });
+    res.status(201).json({ success: true, data: result });
+  } catch (err: unknown) {
+    const error = err as { status?: number; message?: string };
+    if (error.status) {
+      res.status(error.status).json({
+        success: false,
+        error: {
+          code: error.status === 409 ? 'EMAIL_EXISTS' : error.status === 403 ? 'FORBIDDEN' : 'BAD_REQUEST',
+          message: error.message,
+        },
+      });
+      return;
+    }
+    next(err);
+  }
+};
+
+export const login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Email and password are required.' },
+      });
+      return;
+    }
+
+    const result = await authService.login({ email, password });
+    res.status(200).json({ success: true, data: result });
+  } catch (err: unknown) {
+    const error = err as { status?: number; message?: string };
+    if (error.status) {
+      res.status(error.status).json({
+        success: false,
+        error: {
+          code: error.status === 403 ? 'ACCOUNT_BLOCKED' : 'INVALID_CREDENTIALS',
+          message: error.message,
+        },
+      });
+      return;
+    }
+    next(err);
+  }
+};
+
+export const logout = async (_req: Request, res: Response): Promise<void> => {
+  res.status(200).json({ success: true, message: 'Logged out successfully.' });
+};

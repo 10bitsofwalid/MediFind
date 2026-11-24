@@ -1,13 +1,20 @@
 // backend/src/models/Medicine.ts
+// Merged: Jawad (customer catalogue) + main (pharmacy-ops inventory)
+// Unified schema supports both customer discovery and pharmacy inventory management
 import mongoose, { Document, Model, Schema } from 'mongoose';
-import type { Medicine as MedicineType } from '../types/stock';
 
 export interface IMedicine extends Document {
-  name: string;
+  // Jawad fields
+  brandName?: string;
+  // main uses 'name' as primary display name
+  name?: string;
   genericName: string;
-  form: string;
+  // Jawad uses 'dosageForm'; main uses 'form'
+  dosageForm?: string;
+  form?: string;
   strength: string;
   manufacturer?: string;
+  category?: string;
   description?: string;
   prescriptionRequired?: boolean;
   active: boolean;
@@ -17,19 +24,27 @@ export interface IMedicine extends Document {
 
 export const MedicineSchema = new Schema<IMedicine>(
   {
+    brandName: {
+      type: String,
+      trim: true,
+      index: true,
+    },
     name: {
       type: String,
-      required: true,
       trim: true,
     },
     genericName: {
       type: String,
       required: true,
       trim: true,
+      index: true,
+    },
+    dosageForm: {
+      type: String,
+      trim: true,
     },
     form: {
       type: String,
-      required: true,
       trim: true,
     },
     strength: {
@@ -38,6 +53,10 @@ export const MedicineSchema = new Schema<IMedicine>(
       trim: true,
     },
     manufacturer: {
+      type: String,
+      trim: true,
+    },
+    category: {
       type: String,
       trim: true,
     },
@@ -52,7 +71,7 @@ export const MedicineSchema = new Schema<IMedicine>(
     active: {
       type: Boolean,
       default: true,
-      required: true,
+      index: true,
     },
   },
   {
@@ -60,7 +79,8 @@ export const MedicineSchema = new Schema<IMedicine>(
   }
 );
 
-MedicineSchema.index({ name: 'text', genericName: 'text', strength: 'text' });
+// Compound text index for fuzzy/token deterministic matching (customer search)
+MedicineSchema.index({ brandName: 'text', genericName: 'text', name: 'text', strength: 'text' });
 MedicineSchema.index({ active: 1, form: 1 }, { name: 'idx_medicine_active_form' });
 
 export const Medicine: Model<IMedicine> =

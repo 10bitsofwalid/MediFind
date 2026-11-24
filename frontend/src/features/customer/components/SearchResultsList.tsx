@@ -14,6 +14,7 @@ interface SearchResultsListProps {
   onRetry: () => void;
   onSelectPharmacy?: (pharmacyId: string) => void;
   onCallPharmacy?: (phone: string) => void;
+  onDirections?: (pharmacy: NearbyPharmacyResult) => void;
   onSelectAlternative?: (altQuery: string) => void;
   onReportDiscrepancy?: (pharmacy: NearbyPharmacyResult) => void;
   onSubscribeAlert?: (medicineQuery: string) => void;
@@ -27,6 +28,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
   onRetry,
   onSelectPharmacy,
   onCallPharmacy,
+  onDirections,
   onSelectAlternative,
   onReportDiscrepancy,
   onSubscribeAlert,
@@ -471,18 +473,22 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
                 </span>
               )}
 
-              {/* Get Directions link */}
-              <a
-                href={
-                  getDirectionsRoute({
-                    latitude: pharmacy.latitude,
-                    longitude: pharmacy.longitude,
-                    address: pharmacy.address,
-                    pharmacyName: pharmacy.pharmacyName,
-                  }).url
-                }
-                target="_blank"
-                rel="noopener noreferrer"
+              {/* Get Directions button: opens interactive map right here */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDirections) {
+                    onDirections(pharmacy);
+                  } else {
+                    const route = getDirectionsRoute({
+                      latitude: pharmacy.latitude,
+                      longitude: pharmacy.longitude,
+                      address: pharmacy.address,
+                      pharmacyName: pharmacy.pharmacyName,
+                    });
+                    window.open(route.url, '_blank', 'noopener,noreferrer');
+                  }
+                }}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -490,17 +496,17 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
                   fontSize: '12px',
                   fontWeight: 600,
                   color: 'var(--color-text-secondary)',
-                  textDecoration: 'none',
                   padding: '6px 10px',
                   borderRadius: 'var(--radius-md)',
                   border: '1px solid var(--color-border-default)',
                   backgroundColor: 'var(--color-surface-canvas)',
+                  cursor: 'pointer',
                 }}
                 aria-label={`Get directions to ${pharmacy.pharmacyName}`}
               >
                 <Navigation size={13} aria-hidden="true" />
                 <span>Directions</span>
-              </a>
+              </button>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -518,9 +524,9 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
                   borderRadius: 'var(--radius-md)',
                   cursor: 'pointer',
                 }}
-                aria-label={`View pharmacy and medicine details for ${pharmacy.pharmacyName}`}
+                aria-label={`Reserve for pickup at ${pharmacy.pharmacyName}`}
               >
-                <span>View details</span>
+                <span>Reserve for pickup</span>
                 <ChevronRight size={14} aria-hidden="true" />
               </button>
 

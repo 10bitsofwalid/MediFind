@@ -1,15 +1,21 @@
 // backend/src/models/User.ts
+// Merged: Jawad (customer) + main (pharmacy-ops)
+// Unified schema supports all three roles: CUSTOMER, PHARMACY, ADMIN
 import mongoose, { Document, Model, Schema, Types } from 'mongoose';
 import bcrypt from 'bcrypt';
-import type { Role } from '../types/pharmacy';
+
+export type UserRole = 'customer' | 'pharmacy_owner' | 'admin' | 'CUSTOMER' | 'PHARMACY' | 'ADMIN';
+export type UserStatus = 'active' | 'blocked' | 'pending' | 'suspended';
 
 export interface IUser extends Document {
   name: string;
   email: string;
   phone?: string;
+  // Jawad uses passwordHash; main uses password — support both via password field
   password?: string;
-  role: Role;
-  status: 'active' | 'pending' | 'suspended';
+  passwordHash?: string;
+  role: UserRole;
+  status: UserStatus;
   pharmacyId?: Types.ObjectId | string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -30,24 +36,29 @@ export const UserSchema = new Schema<IUser>(
       unique: true,
       trim: true,
       lowercase: true,
+      index: true,
     },
     phone: {
       type: String,
       trim: true,
     },
+    // Unified password field — works for both customer and pharmacy owner auth
     password: {
       type: String,
-      required: true,
+    },
+    // Alias maintained for Jawad's customer auth service (passwordHash)
+    passwordHash: {
+      type: String,
     },
     role: {
       type: String,
-      enum: ['CUSTOMER', 'PHARMACY', 'ADMIN'],
-      default: 'CUSTOMER',
+      enum: ['customer', 'pharmacy_owner', 'admin', 'CUSTOMER', 'PHARMACY', 'ADMIN'],
+      default: 'customer',
       required: true,
     },
     status: {
       type: String,
-      enum: ['active', 'pending', 'suspended'],
+      enum: ['active', 'blocked', 'pending', 'suspended'],
       default: 'active',
       required: true,
     },
@@ -66,8 +77,9 @@ UserSchema.index({ email: 1 }, { unique: true, name: 'idx_user_email_unique' });
 UserSchema.index({ role: 1 }, { name: 'idx_user_role' });
 
 UserSchema.methods.comparePassword = async function (candidate: string): Promise<boolean> {
-  if (!this.password) return false;
-  return bcrypt.compare(candidate, this.password);
+  const hash = this.password || this.passwordHash;
+  if (!hash) return false;
+  return bcrypt.compare(candidate, hash);
 };
 
 export const User: Model<IUser> =

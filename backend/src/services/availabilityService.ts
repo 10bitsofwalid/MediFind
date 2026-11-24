@@ -1,13 +1,268 @@
 // backend/src/services/availabilityService.ts
+// Merged: Jawad (customer geospatial discovery) + main (pharmacy public availability)
+// Exports both AvailabilityService class (Jawad) and standalone functions (main)
 import mongoose, { Types } from 'mongoose';
 import { Pharmacy, IPharmacy } from '../models/Pharmacy';
 import { Stock, IStock } from '../models/Stock';
+import { Medicine } from '../models/Medicine';
+import { calculateDistanceKm, resolveAreaCoordinates } from '../utils/geoUtils';
+import { getPharmacyOpenState } from '../utils/operatingHours';
+import { ENV } from '../config/env';
 import { findMedicineById, searchCatalogue, getAllInMemoryStocks } from './stockService';
 import { getAllInMemoryPharmacies, findPharmacyById } from './pharmacyService';
 import { calculateFreshness } from '../utils/freshness';
 import { ApplicationError } from '../utils/errors';
 import type { StockStatus } from '../types/pharmacy';
-import type { Medicine } from '../types/stock';
+import type { Medicine as MedicineType } from '../types/stock';
+
+function isConnected(): boolean {
+  return mongoose.connection.readyState === 1;
+}
+
+// ============================================================================
+// Jawad's customer discovery types & AvailabilityService class
+// ============================================================================
+
+export interface NearbyAvailabilityParams {
+  medicineId: string;
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
+  area?: string;
+  availability?: string[];
+  openNow?: boolean;
+  sortBy?: 'distance' | 'freshness' | 'availability';
+}
+
+export interface NearbyPharmacyDTO {
+  id: string;
+  pharmacyId: string;
+  pharmacyName: string;
+  isVerified: boolean;
+  address: string;
+  area: string;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+  stockStatus: 'available' | 'low' | 'out';
+  quantity?: number;
+  price?: number;
+  updatedAt: Date;
+  isStale: boolean;
+  isOpen: boolean;
+  openingHoursText: string;
+  phone: string;
+  isDemoData?: boolean;
+}
+
+export class AvailabilityService {
+  async getNearbyAvailability(
+    params: NearbyAvailabilityParams
+  ): Promise<{
+    medicine: any;
+    origin: { lat: number; lng: number; source: 'gps' | 'area_centroid' };
+    results: NearbyPharmacyDTO[];
+  }> {
+    if (!mongoose.Types.ObjectId.isValid(params.medicineId)) {
+      const err = new Error('Invalid medicine ID format.');
+      (err as any).status = 400;
+      throw err;
+    }
+
+    const medicine = await Medicine.findOne({ _id: params.medicineId, active: true });
+
+    if (!medicine) {
+      const err = new Error('Medicine not found or inactive in catalogue.');
+      (err as any).status = 404;
+      throw err;
+    }
+
+    let originLat: number;
+    let originLng: number;
+    let originSource: 'gps' | 'area_centroid';
+
+    if (
+      typeof params.lat === 'number' && !isNaN(params.lat) &&
+      typeof params.lng === 'number' && !isNaN(params.lng) &&
+      (params.lat !== 0 || params.lng !== 0)
+    ) {
+      originLat = params.lat;
+      originLng = params.lng;
+      originSource = 'gps';
+    } else {
+      const resolved = resolveAreaCoordinates(params.area);
+      originLat = resolved.lat;
+      originLng = resolved.lng;
+      originSource = 'area_centroid';
+    }
+
+    const searchRadiusKm = params.radiusKm || ENV.DEFAULT_SEARCH_RADIUS_KM;
+
+    // Query verified pharmacies — Jawad uses 'verificationStatus: Verified',
+    // main uses 'status: verified'. Query both so either convention works.
+    const verifiedPharmacies = await Pharmacy.find({
+      $or: [{ verificationStatus: 'Verified' }, { status: 'verified' }],
+      location: {
+        $geoWithin: {
+          $centerSphere: [[originLng, originLat], searchRadiusKm / 6371],
+        },
+      },
+    });
+
+    if (verifiedPharmacies.length === 0) {
+      return {
+        medicine,
+        origin: { lat: originLat, lng: originLng, source: originSource },
+        results: [],
+      };
+    }
+
+    const pharmacyIds = verifiedPharmacies.map((p) => p._id);
+    const stockRecords = await Stock.find({
+      medicineId: medicine._id,
+      pharmacyId: { $in: pharmacyIds },
+    });
+
+    const stockMap = new Map<string, IStock>();
+    stockRecords.forEach((s) => { stockMap.set(s.pharmacyId.toString(), s); });
+
+    const now = new Date();
+    const staleThresholdMs = ENV.STALE_HOURS_THRESHOLD * 60 * 60 * 1000;
+
+    let results: NearbyPharmacyDTO[] = verifiedPharmacies
+      .map((pharmacy) => {
+        const stock = stockMap.get(pharmacy._id.toString());
+        const rawStatus = stock ? (stock.stockStatus || stock.status) : 'out';
+        const stockStatus = (rawStatus === 'unverified' ? 'out' : rawStatus) as 'available' | 'low' | 'out';
+        const quantity = stock ? stock.quantity : 0;
+        const updatedAt = stock ? stock.updatedAt : pharmacy.updatedAt;
+
+        const coords = pharmacy.location?.coordinates;
+        const pharmLng = coords?.[0] ?? pharmacy.longitude ?? 0;
+        const pharmLat = coords?.[1] ?? pharmacy.latitude ?? 0;
+
+        const distance = calculateDistanceKm(originLat, originLng, pharmLat, pharmLng);
+        const ageMs = now.getTime() - new Date(updatedAt).getTime();
+        const isStale = ageMs >= staleThresholdMs;
+
+        const { isOpen, hoursText } = getPharmacyOpenState(pharmacy.openingHours || '', now);
+
+        return {
+          id: `result-${pharmacy._id}`,
+          pharmacyId: pharmacy._id.toString(),
+          pharmacyName: pharmacy.name,
+          isVerified: true,
+          address: pharmacy.address,
+          area: pharmacy.area || '',
+          latitude: pharmLat,
+          longitude: pharmLng,
+          distanceKm: distance,
+          stockStatus,
+          quantity,
+          price: stock?.price,
+          updatedAt,
+          isStale,
+          isOpen,
+          openingHoursText: hoursText,
+          phone: pharmacy.phone,
+          isDemoData: true,
+        };
+      })
+      .filter((item) => item.distanceKm <= searchRadiusKm);
+
+    if (params.availability && params.availability.length > 0) {
+      results = results.filter((item) => params.availability!.includes(item.stockStatus));
+    }
+
+    if (params.openNow) {
+      results = results.filter((item) => item.isOpen);
+    }
+
+    if (params.sortBy === 'freshness') {
+      results.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    } else if (params.sortBy === 'availability') {
+      const rank: Record<string, number> = { available: 1, low: 2, out: 3 };
+      results.sort((a, b) => (rank[a.stockStatus] || 4) - (rank[b.stockStatus] || 4));
+    } else {
+      results.sort((a, b) => a.distanceKm - b.distanceKm);
+    }
+
+    return { medicine, origin: { lat: originLat, lng: originLng, source: originSource }, results };
+  }
+
+  async getPharmacyStockDetail(pharmacyId: string, medicineId: string): Promise<any> {
+    if (!mongoose.Types.ObjectId.isValid(pharmacyId) || !mongoose.Types.ObjectId.isValid(medicineId)) {
+      const err = new Error('Invalid ID format.');
+      (err as any).status = 400;
+      throw err;
+    }
+
+    const pharmacy = await Pharmacy.findOne({
+      _id: pharmacyId,
+      $or: [{ verificationStatus: 'Verified' }, { status: 'verified' }],
+    });
+
+    if (!pharmacy) {
+      const err = new Error('Verified pharmacy not found.');
+      (err as any).status = 404;
+      throw err;
+    }
+
+    const medicine = await Medicine.findOne({ _id: medicineId, active: true });
+    if (!medicine) {
+      const err = new Error('Medicine not found in active catalogue.');
+      (err as any).status = 404;
+      throw err;
+    }
+
+    const stock = await Stock.findOne({ pharmacyId: pharmacy._id, medicineId: medicine._id });
+    const now = new Date();
+    const staleThresholdMs = ENV.STALE_HOURS_THRESHOLD * 60 * 60 * 1000;
+    const updatedAt = stock?.updatedAt || pharmacy.updatedAt;
+    const isStale = now.getTime() - new Date(updatedAt).getTime() >= staleThresholdMs;
+
+    const { isOpen, hoursText } = getPharmacyOpenState(pharmacy.openingHours || '', now);
+
+    const coords = pharmacy.location?.coordinates;
+    const pharmLng = coords?.[0] ?? pharmacy.longitude ?? 0;
+    const pharmLat = coords?.[1] ?? pharmacy.latitude ?? 0;
+
+    return {
+      pharmacy: {
+        id: pharmacy._id,
+        name: pharmacy.name,
+        isVerified: true,
+        address: pharmacy.address,
+        area: pharmacy.area || '',
+        phone: pharmacy.phone,
+        latitude: pharmLat,
+        longitude: pharmLng,
+        isOpen,
+        openingHoursText: hoursText,
+      },
+      medicine: {
+        id: medicine._id,
+        brandName: medicine.brandName || medicine.name,
+        genericName: medicine.genericName,
+        strength: medicine.strength,
+        dosageForm: medicine.dosageForm || medicine.form,
+      },
+      stock: {
+        status: stock?.stockStatus || stock?.status || 'out',
+        quantity: stock?.quantity ?? 0,
+        price: stock?.price,
+        updatedAt,
+        isStale,
+      },
+    };
+  }
+}
+
+export const availabilityService = new AvailabilityService();
+
+// ============================================================================
+// main's standalone functions (used by searchNearbyPharmaciesHandler)
+// ============================================================================
 
 export interface CustomerAvailabilitySearchParams {
   query?: string;
@@ -15,7 +270,7 @@ export interface CustomerAvailabilitySearchParams {
   lat?: number;
   lng?: number;
   radiusKm?: number;
-  availability?: string; // 'all' | 'available' | 'low' | 'out' | 'unverified'
+  availability?: string;
   openNow?: boolean;
   sortBy?: 'distance' | 'freshness' | 'availability';
 }
@@ -47,268 +302,107 @@ export interface NearbyPharmacyResult {
 }
 
 export interface AvailabilitySearchResponse {
-  medicine: Medicine | null;
+  medicine: MedicineType | null;
   results: NearbyPharmacyResult[];
 }
 
-function isConnected(): boolean {
-  return mongoose.connection.readyState === 1;
-}
-
-/**
- * Calculates Great-Circle distance between two coordinates in kilometers (Haversine formula).
- */
-export function calculateDistanceKm(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  if (!Number.isFinite(lat1) || !Number.isFinite(lon1) || !Number.isFinite(lat2) || !Number.isFinite(lon2)) {
-    return 0;
-  }
-  if (lat1 === 0 && lon1 === 0) return 0;
-  if (lat2 === 0 && lon2 === 0) return 0;
-
-  const R = 6371; // Earth's radius in km
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(R * c * 10) / 10;
-}
-
-/**
- * Database-backed search for nearby verified pharmacies reporting stock availability for a medicine.
- *
- * Core Guarantees:
- * 1. Strictly filters for verified pharmacies (`status: 'verified'`). Never presents unverified/pending pharmacies.
- * 2. Exposes BOTH the reported stock status (`stockStatus`) and the freshness calculation (`isStale`, `freshness`) separately.
- * 3. Freshness does NOT alter the reported stock status.
- */
 export async function searchNearbyAvailability(
   params: CustomerAvailabilitySearchParams
 ): Promise<AvailabilitySearchResponse> {
-  const queryTrimmed = (params.query || '').trim();
-  const medicineIdParam = (params.medicineId || '').trim();
+  const medicine = params.medicineId
+    ? await findMedicineById(params.medicineId)
+    : null;
 
-  // 1. Resolve medicine from catalogue
-  let targetMedicine: Medicine | null = null;
-  if (medicineIdParam) {
-    targetMedicine = await findMedicineById(medicineIdParam);
-  }
-  if (!targetMedicine && queryTrimmed) {
-    const candidates = await searchCatalogue(queryTrimmed, undefined, 5);
-    if (candidates.length > 0) {
-      targetMedicine = candidates[0];
-    }
+  if (!medicine && params.medicineId) {
+    return { medicine: null, results: [] };
   }
 
-  // 2. Fetch all verified pharmacies
-  let verifiedPharmacies: any[] = [];
-  if (isConnected()) {
-    verifiedPharmacies = await Pharmacy.find({ status: 'verified' }).lean();
-  } else {
-    verifiedPharmacies = getAllInMemoryPharmacies().filter((p) => p.status === 'verified');
-  }
+  const allPharmacies = isConnected()
+    ? await Pharmacy.find({ $or: [{ status: 'verified' }, { verificationStatus: 'Verified' }] }).lean()
+    : getAllInMemoryPharmacies().filter(
+        (p: any) => p.status === 'verified' || p.verificationStatus === 'Verified'
+      );
 
-  // Index pharmacies by ID for fast lookup
-  const pharmacyMap = new Map<string, any>();
-  for (const p of verifiedPharmacies) {
-    pharmacyMap.set(String(p._id || p.id), p);
-  }
+  const allStocks = isConnected()
+    ? await Stock.find(medicine ? { medicineId: medicine.id || medicine._id } : {}).lean()
+    : getAllInMemoryStocks().filter(
+        (s: any) => !medicine || String(s.medicineId) === String(medicine.id || (medicine as any)._id)
+      );
 
-  // 3. Fetch stock records
-  let allStocks: any[] = [];
-  if (isConnected()) {
-    const stockQuery: Record<string, unknown> = {};
-    if (targetMedicine) {
-      const medId = targetMedicine.id;
-      stockQuery.$or = [
-        { medicineId: medId },
-        ...(Types.ObjectId.isValid(medId) ? [{ medicineId: new Types.ObjectId(medId) }] : []),
-      ];
-    }
-    allStocks = await Stock.find(stockQuery).lean();
-  } else {
-    allStocks = getAllInMemoryStocks();
-    if (targetMedicine) {
-      const medId = String(targetMedicine.id);
-      allStocks = allStocks.filter((s) => String(s.medicineId) === medId);
-    }
-  }
+  const stockByPharmacy = new Map<string, any>();
+  allStocks.forEach((s: any) => stockByPharmacy.set(String(s.pharmacyId), s));
 
-  // 4. Resolve customer coordinates and radius
-  const customerLat = typeof params.lat === 'number' && Number.isFinite(params.lat) ? params.lat : undefined;
-  const customerLng = typeof params.lng === 'number' && Number.isFinite(params.lng) ? params.lng : undefined;
-  const radiusKm = typeof params.radiusKm === 'number' && params.radiusKm > 0 ? params.radiusKm : 15;
+  const originLat = params.lat ?? 23.7461;
+  const originLng = params.lng ?? 90.3742;
+  const radiusKm = params.radiusKm ?? 15;
+  const now = new Date();
 
   const results: NearbyPharmacyResult[] = [];
 
-  for (const stock of allStocks) {
-    const pharmaId = String(stock.pharmacyId);
-    const pharmacy = pharmacyMap.get(pharmaId);
+  for (const pharmacy of allPharmacies as any[]) {
+    const coords = pharmacy.location?.coordinates;
+    const pharmLng = coords?.[0] ?? pharmacy.longitude ?? 0;
+    const pharmLat = coords?.[1] ?? pharmacy.latitude ?? 0;
+    const distance = calculateDistanceKm(originLat, originLng, pharmLat, pharmLng);
 
-    // Trust boundary: Must belong to a verified pharmacy
-    if (!pharmacy || pharmacy.status !== 'verified') {
-      continue;
-    }
+    if (distance > radiusKm) continue;
 
-    // Availability status filter
-    const stockStatus = stock.status as StockStatus;
-    const availFilter = (params.availability || 'all').trim().toLowerCase();
-    if (availFilter && availFilter !== 'all' && stockStatus !== availFilter) {
-      continue;
-    }
+    const stock = stockByPharmacy.get(String(pharmacy._id || pharmacy.id));
+    const stockStatus: StockStatus = stock?.status || stock?.stockStatus || 'out';
 
-    const pharmaLat =
-      pharmacy.latitude ||
-      (Array.isArray(pharmacy.location?.coordinates) ? pharmacy.location.coordinates[1] : 0);
-    const pharmaLng =
-      pharmacy.longitude ||
-      (Array.isArray(pharmacy.location?.coordinates) ? pharmacy.location.coordinates[0] : 0);
+    if (params.availability && params.availability !== 'all' && stockStatus !== params.availability) continue;
 
-    let distanceKm = 0;
-    if (customerLat !== undefined && customerLng !== undefined) {
-      distanceKm = calculateDistanceKm(customerLat, customerLng, pharmaLat, pharmaLng);
-      if (distanceKm > radiusKm) {
-        continue;
-      }
-    }
+    const { isOpen, hoursText } = getPharmacyOpenState(pharmacy.openingHours || '', now);
+    if (params.openNow && !isOpen) continue;
 
-    // Resolve medicine metadata
-    let med = targetMedicine;
-    if (!med || String(med.id) !== String(stock.medicineId)) {
-      med = await findMedicineById(String(stock.medicineId));
-    }
-
-    const updatedAtIso =
-      stock.updatedAt instanceof Date
-        ? stock.updatedAt.toISOString()
-        : String(stock.updatedAt || new Date().toISOString());
-
-    // Compute freshness separately from reported stock status
-    const freshResult = calculateFreshness(updatedAtIso);
+    const updatedAt = stock?.updatedAt ? new Date(stock.updatedAt) : now;
+    const freshness = calculateFreshness(updatedAt, now);
 
     results.push({
-      id: String(stock._id || stock.stockId || stock.id),
-      pharmacyId: pharmaId,
+      id: `result-${pharmacy._id || pharmacy.id}`,
+      pharmacyId: String(pharmacy._id || pharmacy.id),
       pharmacyName: pharmacy.name,
       isVerified: true,
-      address: pharmacy.formattedAddress || pharmacy.address || '',
+      address: pharmacy.address,
       phone: pharmacy.phone,
-      latitude: pharmaLat,
-      longitude: pharmaLng,
-      distanceKm,
-      isOpen: true,
-      openingHoursText: pharmacy.openingHours || 'Schedule on file',
+      latitude: pharmLat,
+      longitude: pharmLng,
+      distanceKm: distance,
+      isOpen,
+      openingHoursText: hoursText,
       stockStatus,
       status: stockStatus,
-      quantity: typeof stock.quantity === 'number' ? stock.quantity : undefined,
-      updatedAt: updatedAtIso,
-      isStale: freshResult.isStale,
-      freshness: freshResult.freshness,
-      medicineId: String(stock.medicineId),
-      medicineName: med?.name || stock.medicineName || 'Medicine',
-      genericName: med?.genericName || stock.genericName || '',
-      strength: med?.strength || stock.strength || '',
-      form: med?.form || stock.form || '',
+      quantity: stock?.quantity,
+      updatedAt: updatedAt.toISOString(),
+      isStale: freshness === 'stale',
+      freshness,
+      medicineId: String(medicine?.id || medicine?._id || ''),
+      medicineName: (medicine as any)?.name || (medicine as any)?.brandName || '',
+      genericName: (medicine as any)?.genericName || '',
+      strength: (medicine as any)?.strength || '',
+      form: (medicine as any)?.form || (medicine as any)?.dosageForm || '',
+      isDemoData: !isConnected(),
     });
   }
 
-  // Sort results
-  const sortBy = params.sortBy || 'distance';
-  if (sortBy === 'freshness') {
+  if (params.sortBy === 'freshness') {
     results.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  } else if (sortBy === 'availability') {
-    const priority: Record<StockStatus, number> = {
-      available: 0,
-      low: 1,
-      out: 2,
-      unverified: 3,
-    };
-    results.sort((a, b) => (priority[a.stockStatus] ?? 9) - (priority[b.stockStatus] ?? 9));
   } else {
-    // distance default
     results.sort((a, b) => a.distanceKm - b.distanceKm);
   }
 
-  return {
-    medicine: targetMedicine,
-    results,
-  };
+  return { medicine: medicine as any, results };
 }
 
-/**
- * Reads public availability for a specific verified pharmacy.
- * Exposes both reported stock status and freshness separately for each stocked medicine.
- */
-export async function getPharmacyPublicAvailability(pharmacyId: string): Promise<NearbyPharmacyResult[]> {
-  const pharmacy = await findPharmacyById(pharmacyId);
-  if (!pharmacy || pharmacy.status !== 'verified') {
-    throw new ApplicationError(
-      'Pharmacy not found or not currently publicly listed.',
-      'NOT_FOUND',
-      404
-    );
-  }
+export async function getPharmacyPublicAvailability(pharmacyId: string): Promise<any[]> {
+  const stocks = isConnected()
+    ? await Stock.find({ pharmacyId }).lean()
+    : getAllInMemoryStocks().filter((s: any) => String(s.pharmacyId) === pharmacyId);
 
-  const pid = String(pharmacy._id || pharmacy.id);
-  let stocks: any[] = [];
-  if (isConnected()) {
-    stocks = await Stock.find({
-      $or: [
-        { pharmacyId: pid },
-        ...(Types.ObjectId.isValid(pid) ? [{ pharmacyId: new Types.ObjectId(pid) }] : []),
-      ],
-    }).lean();
-  } else {
-    stocks = getAllInMemoryStocks().filter((s) => String(s.pharmacyId) === pid);
-  }
-
-  const results: NearbyPharmacyResult[] = [];
-  const pharmaLat = pharmacy.latitude || pharmacy.location?.coordinates?.[1] || 0;
-  const pharmaLng = pharmacy.longitude || pharmacy.location?.coordinates?.[0] || 0;
-
-  for (const stock of stocks) {
-    const med = await findMedicineById(String(stock.medicineId));
-    const updatedAtIso =
-      stock.updatedAt instanceof Date
-        ? stock.updatedAt.toISOString()
-        : String(stock.updatedAt || new Date().toISOString());
-
-    const freshResult = calculateFreshness(updatedAtIso);
-
-    results.push({
-      id: String(stock._id || stock.stockId || stock.id),
-      pharmacyId: pid,
-      pharmacyName: pharmacy.name,
-      isVerified: true,
-      address: pharmacy.formattedAddress || pharmacy.address || '',
-      phone: pharmacy.phone,
-      latitude: pharmaLat,
-      longitude: pharmaLng,
-      distanceKm: 0,
-      isOpen: true,
-      openingHoursText: pharmacy.openingHours || 'Schedule on file',
-      stockStatus: stock.status,
-      status: stock.status,
-      quantity: typeof stock.quantity === 'number' ? stock.quantity : undefined,
-      updatedAt: updatedAtIso,
-      isStale: freshResult.isStale,
-      freshness: freshResult.freshness,
-      medicineId: String(stock.medicineId),
-      medicineName: med?.name || stock.medicineName || 'Medicine',
-      genericName: med?.genericName || stock.genericName || '',
-      strength: med?.strength || stock.strength || '',
-      form: med?.form || stock.form || '',
-    });
-  }
-
-  return results;
+  return stocks.map((s: any) => ({
+    medicineId: String(s.medicineId),
+    status: s.status || s.stockStatus || 'out',
+    quantity: s.quantity,
+    updatedAt: s.updatedAt,
+  }));
 }
