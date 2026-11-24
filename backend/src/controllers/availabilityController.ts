@@ -48,7 +48,17 @@ export const getNearbyAvailability = async (
       success: true,
       data,
     });
-  } catch (err) {
+  } catch (err: any) {
+    if (err.status) {
+      res.status(err.status).json({
+        success: false,
+        error: {
+          code: err.status === 404 ? 'NOT_FOUND' : 'BAD_REQUEST',
+          message: err.message,
+        },
+      });
+      return;
+    }
     next(err);
   }
 };
@@ -77,7 +87,17 @@ export const getPharmacyStockDetail = async (
       success: true,
       data,
     });
-  } catch (err) {
+  } catch (err: any) {
+    if (err.status) {
+      res.status(err.status).json({
+        success: false,
+        error: {
+          code: err.status === 404 ? 'NOT_FOUND' : 'BAD_REQUEST',
+          message: err.message,
+        },
+      });
+      return;
+    }
     next(err);
   }
 };
