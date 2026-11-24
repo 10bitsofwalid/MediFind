@@ -1,0 +1,107 @@
+openapi: 3.0.3
+info:
+  title: MediFind Customer & Identity API
+  description: REST API specification for Customer Discovery, Medicine Catalogue, Verified Nearby Availability, Reservations, and Restock Alerts.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Local Development Server
+paths:
+  /auth/register:
+    post:
+      summary: Customer Registration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 6 }
+                name: { type: string }
+                phone: { type: string }
+      responses:
+        '201':
+          description: Customer registered with JWT session token
+        '403':
+          description: Forbidden public admin registration
+        '409':
+          description: Email already in use
+  /auth/login:
+    post:
+      summary: Customer Sign-In
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Authenticated session JWT
+        '401':
+          description: Invalid email or password
+        '403':
+          description: Blocked or suspended account
+  /medicines:
+    get:
+      summary: Deterministic Medicine Catalogue Search
+      parameters:
+        - in: query
+          name: query
+          schema: { type: string }
+        - in: query
+          name: strength
+          schema: { type: string }
+      responses:
+        '200':
+          description: List of active curated medicines matching all query tokens
+  /availability:
+    get:
+      summary: Verified Pharmacy Stock Availability with Geospatial Radius Query
+      parameters:
+        - in: query
+          name: medicineId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: lat
+          schema: { type: number }
+        - in: query
+          name: lng
+          schema: { type: number }
+        - in: query
+          name: radiusKm
+          schema: { type: number }
+        - in: query
+          name: area
+          schema: { type: string }
+      responses:
+        '200':
+          description: Nearby verified pharmacies with distance, status, and freshness labels
+  /reservations:
+    post:
+      summary: Create short-term reservation hold with 4-digit pickup code
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Reservation created with 2-hour hold and 4-digit pickup code
+        '429':
+          description: Maximum 2 active customer reservations limit exceeded
+  /subscriptions:
+    post:
+      summary: Subscribe for restock alert notification
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Subscribed for restock notification
+        '409':
+          description: Duplicate active subscription for this medicine
