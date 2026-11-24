@@ -7,6 +7,7 @@ import { ENV } from './config/env';
 import { authRouter } from './routes/authRoutes';
 import { userRouter } from './routes/userRoutes';
 import { medicineRouter } from './routes/medicineRoutes';
+import { availabilityRouter } from './routes/availabilityRoutes';
 
 export const app: Application = express();
 
@@ -25,6 +26,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/users', userRouter);
 app.use('/api/v1/medicines', medicineRouter);
+app.use('/api/v1/availability', availabilityRouter);
 
 // Liveness & Readiness endpoints
 app.get('/health', (_req: Request, res: Response) => {
