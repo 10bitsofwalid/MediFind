@@ -108,6 +108,21 @@ export class ReservationService {
     await reservation.save();
     return reservation;
   }
+  async sweepExpiredReservations(referenceDate = new Date()): Promise<number> {
+    const result = await Reservation.updateMany(
+      {
+        status: 'active',
+        expiresAt: { [String.fromCharCode(36) + 'lte']: referenceDate },
+      },
+      {
+        [String.fromCharCode(36) + 'set']: {
+          status: 'expired',
+        },
+      }
+    );
+    return result.modifiedCount || 0;
+  }
 }
+
 
 export const reservationService = new ReservationService();
