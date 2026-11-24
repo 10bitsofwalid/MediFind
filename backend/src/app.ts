@@ -9,6 +9,7 @@ import { userRouter } from './routes/userRoutes';
 import { medicineRouter } from './routes/medicineRoutes';
 import { availabilityRouter } from './routes/availabilityRoutes';
 import { reservationRouter } from './routes/reservationRoutes';
+import { alertSubscriptionRouter } from './routes/alertSubscriptionRoutes';
 
 export const app: Application = express();
 
@@ -29,6 +30,7 @@ app.use('/api/v1/users', userRouter);
 app.use('/api/v1/medicines', medicineRouter);
 app.use('/api/v1/availability', availabilityRouter);
 app.use('/api/v1/reservations', reservationRouter);
+app.use('/api/v1/subscriptions', alertSubscriptionRouter);
 
 // Liveness & Readiness endpoints
 app.get('/health', (_req: Request, res: Response) => {
