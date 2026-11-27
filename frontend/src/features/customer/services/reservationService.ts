@@ -117,15 +117,4 @@ export const reservationService = {
     }
     return new Date(reservation.expiresAt).getTime() < Date.now();
   },
-
-  /**
-   * Clear all reservations (for tests and teardown)
-   */
-  clearReservations(): void {
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // ignore
-    }
-  },
 };

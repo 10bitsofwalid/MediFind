@@ -1,5 +1,5 @@
 // backend/src/routes/userRoutes.ts
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import { getProfile, updateProfile, changePassword } from '../controllers/userController';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 

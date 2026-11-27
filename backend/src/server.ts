@@ -22,8 +22,6 @@ import { getMedicinesHandler } from './controllers/stockController';
 import {
   searchNearbyPharmaciesHandler,
   getPharmacyAvailabilityHandler,
-  getNearbyAvailability,
-  getPharmacyStockDetail,
 } from './controllers/availabilityController';
 import {
   getQualityThresholdsHandler,

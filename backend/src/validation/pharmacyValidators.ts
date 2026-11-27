@@ -6,7 +6,6 @@ import type {
 } from '../types/pharmacy';
 import {
   formatWeeklyHours,
-  normalizeLicenseNo,
   validateEmail,
   validateLocation,
   validatePhone,

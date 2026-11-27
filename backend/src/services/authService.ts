@@ -1,6 +1,6 @@
 // backend/src/services/authService.ts
 import bcrypt from 'bcrypt';
-import { User, IUser, UserRole } from '../models/User';
+import { User, UserRole } from '../models/User';
 import { signToken } from '../utils/jwt';
 
 export interface RegisterDTO {

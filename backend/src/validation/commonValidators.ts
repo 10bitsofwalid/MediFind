@@ -1,5 +1,5 @@
 // backend/src/validation/commonValidators.ts
-import type { DayOfWeek, LocationGeoJSON, WeeklyHours } from '../types/pharmacy';
+import type { DayOfWeek, WeeklyHours } from '../types/pharmacy';
 
 export const DAYS_OF_WEEK: DayOfWeek[] = [
   'monday',
@@ -26,7 +26,7 @@ export function normalizeLicenseNo(raw: unknown): string {
 /**
  * Validates phone number format and length (10 to 15 digits).
  */
-export function validatePhone(phone: unknown, fieldName: string = 'phone'): string | null {
+export function validatePhone(phone: unknown): string | null {
   if (typeof phone !== 'string' || !phone.trim()) {
     return 'Contact phone number is required.';
   }
@@ -40,7 +40,7 @@ export function validatePhone(phone: unknown, fieldName: string = 'phone'): stri
 /**
  * Validates official email address format.
  */
-export function validateEmail(email: unknown, fieldName: string = 'email'): string | null {
+export function validateEmail(email: unknown): string | null {
   if (typeof email !== 'string' || !email.trim()) {
     return 'Official business email is required.';
   }
@@ -53,7 +53,7 @@ export function validateEmail(email: unknown, fieldName: string = 'email'): stri
 /**
  * Validates optional postal code format (4 to 6 digits).
  */
-export function validatePostalCode(postalCode: unknown, fieldName: string = 'postalCode'): string | null {
+export function validatePostalCode(postalCode: unknown): string | null {
   if (postalCode === undefined || postalCode === null || postalCode === '') {
     return null;
   }

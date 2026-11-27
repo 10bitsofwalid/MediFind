@@ -4,11 +4,8 @@ import {
   PharmacyApplication,
   IPharmacyApplication,
 } from '../models/PharmacyApplication';
-import { Pharmacy, IPharmacy } from '../models/Pharmacy';
-import type {
-  PharmacyApplicationPayload,
-  VerificationStatus,
-} from '../types/pharmacy';
+import { Pharmacy } from '../models/Pharmacy';
+import type { VerificationStatus } from '../types/pharmacy';
 import { normalizeLicenseNo } from '../validation/commonValidators';
 import { validatePharmacyApplicationPayload } from '../validation/pharmacyValidators';
 import { sanitizeClientPayload } from '../auth/ownership';

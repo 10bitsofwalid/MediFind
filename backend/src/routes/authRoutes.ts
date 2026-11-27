@@ -5,9 +5,6 @@ import {
   register,
   login,
   logout,
-  registerHandler,
-  loginHandler,
-  logoutHandler,
   meHandler,
 } from '../controllers/authController';
 import { requireAuth } from '../middleware/authMiddleware';

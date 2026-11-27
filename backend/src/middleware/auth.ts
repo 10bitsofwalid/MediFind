@@ -1,6 +1,6 @@
 // backend/src/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken, JwtPayload } from '../utils/jwt';
+import { verifyToken } from '../utils/jwt';
 
 export interface AuthRequest extends Request {
   user?: any;

@@ -33,7 +33,7 @@ export class AuthServiceError extends Error {
   }
 }
 
-export function normalizeUserRole(raw: unknown): Role | null {
+function normalizeUserRole(raw: unknown): Role | null {
   if (typeof raw !== 'string') return null;
   const cleaned = raw.trim().toUpperCase().replace(/[\s-]+/g, '_');
   if (cleaned === 'PHARMACY' || cleaned === 'PHARMACY_OWNER' || cleaned === 'OWNER') {
@@ -56,7 +56,7 @@ function normalizeAccountStatus(raw: unknown): User['status'] {
   return 'active';
 }
 
-export function normalizeServerUser(raw: unknown): User | null {
+function normalizeServerUser(raw: unknown): User | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
   const id =

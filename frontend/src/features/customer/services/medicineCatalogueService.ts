@@ -109,24 +109,5 @@ export const medicineCatalogueService = {
       return queryWords.every((word) => target.includes(word));
     });
   },
-
-  /**
-   * Get specific medicine details from catalogue
-   */
-  async getMedicineById(id: string): Promise<MedicineCatalogueItem | null> {
-    try {
-      const response = await api.get(`/medicines/${id}`);
-      if (response.data) return response.data;
-    } catch {
-      // Fallback
-    }
-
-    const found = CATALOGUE_SEED.find((item) => item.id === id);
-    if (found) return found;
-
-    // Default fallback if id matches a name query
-    const nameMatch = CATALOGUE_SEED.find((item) => item.name.toLowerCase().includes(id.toLowerCase()));
-    return nameMatch || CATALOGUE_SEED[0];
-  },
 };
 

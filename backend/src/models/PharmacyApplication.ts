@@ -2,7 +2,6 @@
 import mongoose, { Document, Model, Schema, Types } from 'mongoose';
 import type {
   LocationGeoJSON,
-  PharmacyApplicationPayload,
   VerificationStatus,
   WeeklyHours,
 } from '../types/pharmacy';

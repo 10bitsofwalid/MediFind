@@ -167,7 +167,7 @@ function mapAxiosPharmacyError(err: unknown, fallbackMessage: string): PharmacyS
  * Normalizes canonical pharmacy verification status values across casing variants
  * (e.g. "PENDING", "Pending", "pending"). Returns null for unrecognized values.
  */
-export function normalizeVerificationStatus(raw: unknown): VerificationStatus | null {
+function normalizeVerificationStatus(raw: unknown): VerificationStatus | null {
   if (typeof raw !== 'string') return null;
   const cleaned = raw.trim().toLowerCase();
   if (

@@ -6,9 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import mongoose, { Types } from 'mongoose';
-import { User, IUser } from '../models/User';
-import { ApplicationError } from '../utils/errors';
-import { wrapEnvelope } from '../utils/responseEnvelope';
+import { User } from '../models/User';
 import { authService } from '../services/authService';
 
 const inMemoryUsers = new Map<string, any>();
@@ -18,10 +16,6 @@ function isConnected(): boolean {
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'medifind_jwt_secret_dev_key_2026';
-
-export function clearInMemoryUsers(): void {
-  inMemoryUsers.clear();
-}
 
 function resolveRole(roleRaw: unknown): 'CUSTOMER' | 'PHARMACY' | 'ADMIN' {
   if (typeof roleRaw !== 'string') return 'PHARMACY';

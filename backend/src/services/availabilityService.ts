@@ -2,16 +2,15 @@
 // Merged: Jawad (customer geospatial discovery) + main (pharmacy public availability)
 // Exports both AvailabilityService class (Jawad) and standalone functions (main)
 import mongoose, { Types } from 'mongoose';
-import { Pharmacy, IPharmacy } from '../models/Pharmacy';
+import { Pharmacy } from '../models/Pharmacy';
 import { Stock, IStock } from '../models/Stock';
 import { Medicine } from '../models/Medicine';
 import { calculateDistanceKm, resolveAreaCoordinates } from '../utils/geoUtils';
 import { getPharmacyOpenState } from '../utils/operatingHours';
 import { ENV } from '../config/env';
 import { findMedicineById, searchCatalogue, getAllInMemoryStocks } from './stockService';
-import { getAllInMemoryPharmacies, findPharmacyById } from './pharmacyService';
+import { getAllInMemoryPharmacies } from './pharmacyService';
 import { calculateFreshness } from '../utils/freshness';
-import { ApplicationError } from '../utils/errors';
 import type { StockStatus } from '../types/pharmacy';
 import type { Medicine as MedicineType } from '../types/stock';
 

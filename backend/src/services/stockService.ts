@@ -1,8 +1,8 @@
 // backend/src/services/stockService.ts
 import mongoose, { Types } from 'mongoose';
-import { Stock, IStock } from '../models/Stock';
-import { StockHistory, IStockHistory } from '../models/StockHistory';
-import { Medicine as MedicineModel, IMedicine } from '../models/Medicine';
+import { Stock } from '../models/Stock';
+import { StockHistory } from '../models/StockHistory';
+import { Medicine as MedicineModel } from '../models/Medicine';
 import { findPharmacyByOwner } from './pharmacyService';
 import {
   syntheticMedicines,
@@ -13,7 +13,6 @@ import {
   assertPharmacyOwnership,
   assertPharmacyVerifiedForInventoryWrite,
   AuthenticatedUserContext,
-  sanitizeClientPayload,
 } from '../auth/ownership';
 import { ApplicationError } from '../utils/errors';
 import { ValidationError } from '../validation/validationError';
@@ -27,13 +26,12 @@ import {
   formatStockRecord,
   formatServerStockUpdate,
   formatStockHistoryResponse,
+  wrapEnvelope,
 } from '../utils/responseEnvelope';
-import { isReportStale } from '../utils/freshness';
 import {
   getIdempotentResponse,
   recordIdempotentResponse,
 } from '../utils/idempotency';
-import { wrapEnvelope } from '../utils/responseEnvelope';
 import type { StockStatus } from '../types/pharmacy';
 import type {
   Medicine,

@@ -1,14 +1,7 @@
 // backend/src/services/pharmacyService.ts
 import mongoose, { Types } from 'mongoose';
-import { Pharmacy, IPharmacy } from '../models/Pharmacy';
-import {
-  PharmacyApplication,
-  IPharmacyApplication,
-} from '../models/PharmacyApplication';
-import {
-  findApplicationByOwner,
-  findApplicationById,
-} from './pharmacyApplicationService';
+import { Pharmacy } from '../models/Pharmacy';
+import { findApplicationByOwner } from './pharmacyApplicationService';
 import {
   syntheticVerifiedPharmacy,
   syntheticSuspendedPharmacy,
@@ -31,7 +24,6 @@ import { formatPharmacyResponse } from '../utils/responseEnvelope';
 import type {
   LocationGeoJSON,
   Pharmacy as PharmacyType,
-  VerificationStatus,
   WeeklyHours,
 } from '../types/pharmacy';
 

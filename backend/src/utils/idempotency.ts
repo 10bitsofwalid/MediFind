@@ -8,7 +8,6 @@ export interface CachedIdempotentResponse {
 
 // In-memory store for idempotency keys with 24-hour TTL
 const idempotencyStore = new Map<string, CachedIdempotentResponse>();
-const inFlightOperations = new Set<string>();
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -57,46 +56,6 @@ export function recordIdempotentResponse(
     body: JSON.parse(JSON.stringify(body)),
     cachedAt: Date.now(),
   });
-  inFlightOperations.delete(key);
-}
-
-/**
- * Checks whether an operation for this idempotency key is currently processing.
- */
-export function isOperationInProgress(
-  ownerId: string,
-  idempotencyKey: string | undefined | null
-): boolean {
-  if (!idempotencyKey || typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) {
-    return false;
-  }
-  return inFlightOperations.has(buildCompositeKey(ownerId, idempotencyKey));
-}
-
-/**
- * Marks an idempotency key as currently in-flight.
- */
-export function setOperationInProgress(
-  ownerId: string,
-  idempotencyKey: string | undefined | null
-): void {
-  if (!idempotencyKey || typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) {
-    return;
-  }
-  inFlightOperations.add(buildCompositeKey(ownerId, idempotencyKey));
-}
-
-/**
- * Clears in-flight marker for an idempotency key.
- */
-export function clearOperationInProgress(
-  ownerId: string,
-  idempotencyKey: string | undefined | null
-): void {
-  if (!idempotencyKey || typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) {
-    return;
-  }
-  inFlightOperations.delete(buildCompositeKey(ownerId, idempotencyKey));
 }
 
 /**
@@ -104,7 +63,6 @@ export function clearOperationInProgress(
  */
 export function clearIdempotencyStore(): void {
   idempotencyStore.clear();
-  inFlightOperations.clear();
 }
 
 export const clearIdempotencyCache = clearIdempotencyStore;

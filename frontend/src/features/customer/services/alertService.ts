@@ -87,15 +87,4 @@ export const alertService = {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
     return target;
   },
-
-  /**
-   * Clear all alerts (for testing)
-   */
-  clearAlerts(): void {
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // ignore
-    }
-  },
 };

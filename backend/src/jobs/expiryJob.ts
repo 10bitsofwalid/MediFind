@@ -12,10 +12,3 @@ export const runReservationExpiryCheck = async (): Promise<number> => {
     return 0;
   }
 };
-
-export const setupExpiryCron = (): void => {
-  const cron = require('node-cron');
-  cron.schedule('*/5 * * * *', async () => {
-    await runReservationExpiryCheck();
-  });
-};

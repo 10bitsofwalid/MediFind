@@ -5,14 +5,13 @@ import type {
   PharmacyApplicationResponse,
 } from '../types/pharmacy';
 import type {
-  OwnerSummary,
   ServerStockUpdate,
   StockHistoryPage,
   StockHistoryRecord,
   StockHistoryResponse,
   StockInventoryRecord,
 } from '../types/stock';
-import { calculateFreshness, isReportStale } from './freshness';
+import { calculateFreshness } from './freshness';
 
 /**
  * Wraps any data payload in the standard { data: T, page?: ... } API response envelope.
@@ -227,15 +226,5 @@ export function formatStockHistoryResponse(
   }
 
   return formatted;
-}
-
-/**
- * Formats the owner workspace summary response.
- */
-export function formatOwnerSummaryResponse(
-  summary: OwnerSummary,
-  wrapInEnvelope: boolean = true
-): ApiSuccessResponse<OwnerSummary> | OwnerSummary {
-  return wrapInEnvelope ? wrapEnvelope(summary) : summary;
 }
 

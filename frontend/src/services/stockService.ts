@@ -609,33 +609,6 @@ export const stockService = {
     }
   },
 
-  async getInventoryItem(pharmacyId: string, stockId: string): Promise<StockInventoryRecord> {
-    if (isMockApiEnabled()) {
-      const items = await this.getInventory(pharmacyId);
-      const found = items.find((item) => item.stockId === stockId);
-      if (!found) {
-        throw new StockServiceError('Stock item not found in this pharmacy inventory.', 'NOT_FOUND', 404);
-      }
-      return found;
-    }
-
-    try {
-      const res = await api.get(`/owner/inventory/${stockId}`);
-      const raw = res.data?.data ?? res.data;
-      const normalized = normalizeServerInventoryRecord(raw, pharmacyId);
-      if (!normalized) {
-        throw new StockServiceError(
-          'Server returned an unexpected stock item format.',
-          'INVALID_RESPONSE',
-          502
-        );
-      }
-      return normalized;
-    } catch (err: unknown) {
-      throw mapAxiosStockError(err, 'Failed to load stock item.');
-    }
-  },
-
   async addInventoryItem(
     pharmacyId: string,
     payload: AddInventoryMedicinePayload,

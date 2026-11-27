@@ -14,7 +14,7 @@ export interface MedicineCatalogueDetails extends MedicineSuggestion {
 }
 
 // Core medicine catalogue
-export const MASTER_MEDICINE_CATALOGUE: MedicineCatalogueDetails[] = [
+const MASTER_MEDICINE_CATALOGUE: MedicineCatalogueDetails[] = [
   {
     id: 'med_001',
     name: 'Napa Extra 500 mg tablet',
@@ -186,32 +186,6 @@ const BASELINE_PHARMACIES: Pharmacy[] = [
 ];
 
 export const medicineService = {
-  /**
-   * Search medicines from catalogue by brand, generic, or strength.
-   */
-  async searchMedicines(searchTerm: string): Promise<MedicineCatalogueDetails[]> {
-    const query = searchTerm.trim().toLowerCase();
-    if (!query) return [];
-
-    if (!isMockApiEnabled()) {
-      try {
-        const res = await api.get('/medicines/search', { params: { q: query } });
-        if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-          return res.data;
-        }
-      } catch {
-        // Fallback to local catalogue
-      }
-    }
-
-    return MASTER_MEDICINE_CATALOGUE.filter(
-      (m) =>
-        m.name.toLowerCase().includes(query) ||
-        m.genericName.toLowerCase().includes(query) ||
-        m.strength.toLowerCase().includes(query)
-    );
-  },
-
   /**
    * Get medicine specifications by ID or name
    */

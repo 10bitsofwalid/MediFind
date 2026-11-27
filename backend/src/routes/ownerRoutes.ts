@@ -1,5 +1,5 @@
 // backend/src/routes/ownerRoutes.ts
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { requireAuth, requirePharmacyRole } from '../middleware/authMiddleware';
 import {
   submitPharmacyApplicationHandler,

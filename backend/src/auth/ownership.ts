@@ -1,6 +1,5 @@
 // backend/src/auth/ownership.ts
 import type { IPharmacy } from '../models/Pharmacy';
-import type { IPharmacyApplication } from '../models/PharmacyApplication';
 import type { VerificationStatus } from '../types/pharmacy';
 
 export class AuthorizationError extends Error {
@@ -127,33 +126,6 @@ export function assertPharmacyOwnership(
   if (ownerIdStr !== authUserIdStr) {
     throw new AuthorizationError(
       'You are not authorized to view or modify this pharmacy record.',
-      'PHARMACY_OWNERSHIP_DENIED',
-      403
-    );
-  }
-}
-
-/**
- * Verifies that the pharmacy application is owned by the authenticated server user.
- */
-export function assertApplicationOwnership(
-  application: IPharmacyApplication | null | undefined,
-  authenticatedUserId: string
-): asserts application is IPharmacyApplication {
-  if (!application) {
-    throw new AuthorizationError(
-      'No submitted pharmacy application found for this account.',
-      'NOT_FOUND',
-      404
-    );
-  }
-
-  const ownerIdStr = String(application.ownerId);
-  const authUserIdStr = String(authenticatedUserId).trim();
-
-  if (ownerIdStr !== authUserIdStr) {
-    throw new AuthorizationError(
-      'You are not authorized to access or modify this application.',
       'PHARMACY_OWNERSHIP_DENIED',
       403
     );
