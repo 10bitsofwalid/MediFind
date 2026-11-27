@@ -67,6 +67,16 @@ export async function registerHandler(
     const cleanName = name.trim();
     const resolvedRole = resolveRole(role);
 
+    if (resolvedRole === 'ADMIN') {
+      res.status(403).json({
+        error: {
+          code: 'FORBIDDEN_ROLE',
+          message: 'Administrator accounts cannot be created via public registration.',
+        },
+      });
+      return;
+    }
+
     let existingUser: any = null;
     if (isConnected()) {
       existingUser = await User.findOne({ email: cleanEmail }).lean();
@@ -86,7 +96,7 @@ export async function registerHandler(
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const userId = `usr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    let userId = `usr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const now = new Date();
 
     const userObj = {
@@ -108,7 +118,8 @@ export async function registerHandler(
         ...(Types.ObjectId.isValid(userId) ? { _id: new Types.ObjectId(userId) } : {}),
         ...restUser,
       });
-      await doc.save();
+      const saved = await doc.save();
+      userId = saved._id.toString();
     } else {
       inMemoryUsers.set(cleanEmail, userObj);
     }
@@ -221,7 +232,9 @@ export async function meHandler(
     let user: any = null;
 
     if (isConnected()) {
-      user = await User.findById(userId).lean();
+      if (Types.ObjectId.isValid(userId)) {
+        user = await User.findById(userId).lean();
+      }
     } else {
       for (const u of inMemoryUsers.values()) {
         if (String(u.id || u._id) === userId) { user = u; break; }

@@ -11,9 +11,13 @@ import { isValidationError } from './validation/validationError';
 import { AuthorizationError } from './auth/ownership';
 import { ApplicationError } from './utils/errors';
 import ownerRouter from './routes/ownerRoutes';
-import { authRouter } from './routes/authRoutes';
 import { requireAuth } from './middleware/authMiddleware';
-import { meHandler } from './controllers/authController';
+import {
+  meHandler,
+  registerHandler,
+  loginHandler,
+  logoutHandler,
+} from './controllers/authController';
 import { getMedicinesHandler } from './controllers/stockController';
 import {
   searchNearbyPharmaciesHandler,
@@ -179,9 +183,15 @@ app.post('/api/admin/pharmacies/:pharmacyId/suspend', suspendPharmacyHandler);
 app.post('/admin/pharmacies/:pharmacyId/reactivate', reactivatePharmacyHandler);
 app.post('/api/admin/pharmacies/:pharmacyId/reactivate', reactivatePharmacyHandler);
 
-// Authentication & User Identity
-app.use('/auth', authRouter);
-app.use('/api/auth', authRouter);
+// Authentication & User Identity (uses pharmacy-ops handlers with MongoDB + in-memory fallback)
+app.post('/auth/register', registerHandler);
+app.post('/api/auth/register', registerHandler);
+app.post('/auth/login', loginHandler);
+app.post('/api/auth/login', loginHandler);
+app.post('/auth/logout', logoutHandler);
+app.post('/api/auth/logout', logoutHandler);
+app.get('/auth/me', requireAuth, meHandler);
+app.get('/api/auth/me', requireAuth, meHandler);
 app.get('/me', requireAuth, meHandler);
 app.get('/api/me', requireAuth, meHandler);
 
@@ -217,17 +227,17 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   }
 
   if (isValidationError(err)) {
-    res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: err.message, fields: err.fields } });
+    res.status(err.status || 422).json(err.toJSON());
     return;
   }
 
   if (err instanceof AuthorizationError) {
-    res.status(403).json({ error: { code: 'AUTHORIZATION_ERROR', message: err.message } });
+    res.status(err.status || 403).json(err.toJSON());
     return;
   }
 
   if (err instanceof ApplicationError) {
-    res.status(err.status || 400).json({ error: { code: err.code || 'APPLICATION_ERROR', message: err.message } });
+    res.status(err.status || 400).json(err.toJSON());
     return;
   }
 

@@ -43,7 +43,6 @@ export const StockSchema = new Schema<IStock>(
       enum: ['available', 'low', 'out', 'unverified'],
       default: 'available',
       required: true,
-      index: true,
     },
     // Alias for Jawad's customer availability service
     stockStatus: {

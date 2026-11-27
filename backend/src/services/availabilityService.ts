@@ -10,16 +10,10 @@ import { getPharmacyOpenState } from '../utils/operatingHours';
 import { ENV } from '../config/env';
 import { findMedicineById, searchCatalogue, getAllInMemoryStocks } from './stockService';
 import { getAllInMemoryPharmacies, findPharmacyById } from './pharmacyService';
-import type { FreshnessCalculationResult } from '../utils/freshness';
+import { calculateFreshness } from '../utils/freshness';
 import { ApplicationError } from '../utils/errors';
 import type { StockStatus } from '../types/pharmacy';
 import type { Medicine as MedicineType } from '../types/stock';
-
-function calculateFreshness(updatedAt: Date, _now: Date): 'fresh' | 'stale' {
-  const ageMs = _now.getTime() - updatedAt.getTime();
-  const staleMs = (ENV.STALE_HOURS_THRESHOLD || 24) * 60 * 60 * 1000;
-  return ageMs >= staleMs ? 'stale' : 'fresh';
-}
 
 function isConnected(): boolean {
   return mongoose.connection.readyState === 1;
@@ -313,11 +307,22 @@ export interface AvailabilitySearchResponse {
 export async function searchNearbyAvailability(
   params: CustomerAvailabilitySearchParams
 ): Promise<AvailabilitySearchResponse> {
-  const medicine = params.medicineId
-    ? await findMedicineById(params.medicineId)
-    : null;
+  const queryTrimmed = (params.query || '').trim();
+  const medicineIdParam = (params.medicineId || '').trim();
 
-  if (!medicine && params.medicineId) {
+  // 1. Resolve medicine from catalogue
+  let medicine: MedicineType | null = null;
+  if (medicineIdParam) {
+    medicine = await findMedicineById(medicineIdParam);
+  }
+  if (!medicine && queryTrimmed) {
+    const candidates = await searchCatalogue(queryTrimmed, undefined, 5);
+    if (candidates.length > 0) {
+      medicine = candidates[0];
+    }
+  }
+
+  if (!medicine && medicineIdParam) {
     return { medicine: null, results: [] };
   }
 
@@ -327,70 +332,106 @@ export async function searchNearbyAvailability(
         (p: any) => p.status === 'verified' || p.verificationStatus === 'Verified'
       );
 
-  const allStocks = isConnected()
-    ? await Stock.find(medicine ? { medicineId: medicine.id || (medicine as any)._id } : {}).lean()
-    : getAllInMemoryStocks().filter(
-        (s: any) => !medicine || String(s.medicineId) === String(medicine.id || (medicine as any)._id)
-      );
+  const pharmacyMap = new Map<string, any>();
+  for (const p of allPharmacies as any[]) {
+    pharmacyMap.set(String(p._id || p.id), p);
+  }
 
-  const stockByPharmacy = new Map<string, any>();
-  allStocks.forEach((s: any) => stockByPharmacy.set(String(s.pharmacyId), s));
+  let allStocks: any[] = [];
+  if (isConnected()) {
+    const stockQuery: Record<string, unknown> = {};
+    if (medicine) {
+      const medId = medicine.id || (medicine as any)._id;
+      stockQuery.$or = [
+        { medicineId: medId },
+        ...(Types.ObjectId.isValid(String(medId)) ? [{ medicineId: new Types.ObjectId(String(medId)) }] : []),
+      ];
+    }
+    allStocks = await Stock.find(stockQuery).lean();
+  } else {
+    allStocks = getAllInMemoryStocks();
+    if (medicine) {
+      const medId = String(medicine.id || (medicine as any)._id);
+      allStocks = allStocks.filter((s: any) => String(s.medicineId) === medId);
+    }
+  }
 
-  const originLat = params.lat ?? 23.7461;
-  const originLng = params.lng ?? 90.3742;
-  const radiusKm = params.radiusKm ?? 15;
+  const customerLat = typeof params.lat === 'number' && Number.isFinite(params.lat) ? params.lat : undefined;
+  const customerLng = typeof params.lng === 'number' && Number.isFinite(params.lng) ? params.lng : undefined;
+  const radiusKm = typeof params.radiusKm === 'number' && params.radiusKm > 0 ? params.radiusKm : 15;
   const now = new Date();
 
   const results: NearbyPharmacyResult[] = [];
 
-  for (const pharmacy of allPharmacies as any[]) {
+  for (const stock of allStocks) {
+    const pharmaId = String(stock.pharmacyId);
+    const pharmacy = pharmacyMap.get(pharmaId);
+    if (!pharmacy) continue;
+
+    const stockStatus: StockStatus = stock.status || stock.stockStatus || 'out';
+    if (params.availability && params.availability !== 'all' && stockStatus !== params.availability) continue;
+
     const coords = pharmacy.location?.coordinates;
     const pharmLng = coords?.[0] ?? pharmacy.longitude ?? 0;
     const pharmLat = coords?.[1] ?? pharmacy.latitude ?? 0;
-    const distance = calculateDistanceKm(originLat, originLng, pharmLat, pharmLng);
 
-    if (distance > radiusKm) continue;
-
-    const stock = stockByPharmacy.get(String(pharmacy._id || pharmacy.id));
-    const stockStatus: StockStatus = stock?.status || stock?.stockStatus || 'out';
-
-    if (params.availability && params.availability !== 'all' && stockStatus !== params.availability) continue;
+    let distance = 0;
+    if (customerLat !== undefined && customerLng !== undefined) {
+      distance = calculateDistanceKm(customerLat, customerLng, pharmLat, pharmLng);
+      if (distance > radiusKm) continue;
+    }
 
     const { isOpen, hoursText } = getPharmacyOpenState(pharmacy.openingHours || '', now);
     if (params.openNow && !isOpen) continue;
 
-    const updatedAt = stock?.updatedAt ? new Date(stock.updatedAt) : now;
-    const freshness = calculateFreshness(updatedAt, now);
+    let med = medicine;
+    if (!med || String(med.id || (med as any)._id) !== String(stock.medicineId)) {
+      med = await findMedicineById(String(stock.medicineId));
+    }
+
+    const updatedAtIso =
+      stock.updatedAt instanceof Date
+        ? stock.updatedAt.toISOString()
+        : String(stock.updatedAt || now.toISOString());
+    const freshResult = calculateFreshness(updatedAtIso);
 
     results.push({
-      id: `result-${pharmacy._id || pharmacy.id}`,
-      pharmacyId: String(pharmacy._id || pharmacy.id),
+      id: String(stock._id || stock.stockId || stock.id),
+      pharmacyId: pharmaId,
       pharmacyName: pharmacy.name,
       isVerified: true,
-      address: pharmacy.address,
+      address: pharmacy.formattedAddress || pharmacy.address || '',
       phone: pharmacy.phone,
       latitude: pharmLat,
       longitude: pharmLng,
       distanceKm: distance,
       isOpen,
-      openingHoursText: hoursText,
+      openingHoursText: hoursText || pharmacy.openingHours || 'Schedule on file',
       stockStatus,
       status: stockStatus,
-      quantity: stock?.quantity,
-      updatedAt: updatedAt.toISOString(),
-      isStale: freshness === 'stale',
-      freshness,
-      medicineId: String(medicine?.id || (medicine as any)?._id || ''),
-      medicineName: (medicine as any)?.name || (medicine as any)?.brandName || '',
-      genericName: (medicine as any)?.genericName || '',
-      strength: (medicine as any)?.strength || '',
-      form: (medicine as any)?.form || (medicine as any)?.dosageForm || '',
+      quantity: typeof stock.quantity === 'number' ? stock.quantity : undefined,
+      updatedAt: updatedAtIso,
+      isStale: freshResult.isStale,
+      freshness: freshResult.freshness,
+      medicineId: String(stock.medicineId),
+      medicineName: med?.name || (med as any)?.brandName || stock.medicineName || 'Medicine',
+      genericName: med?.genericName || stock.genericName || '',
+      strength: med?.strength || stock.strength || '',
+      form: med?.form || (med as any)?.dosageForm || stock.form || '',
       isDemoData: !isConnected(),
     });
   }
 
   if (params.sortBy === 'freshness') {
     results.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  } else if (params.sortBy === 'availability') {
+    const priority: Record<StockStatus, number> = {
+      available: 0,
+      low: 1,
+      out: 2,
+      unverified: 3,
+    };
+    results.sort((a, b) => (priority[a.stockStatus] ?? 9) - (priority[b.stockStatus] ?? 9));
   } else {
     results.sort((a, b) => a.distanceKm - b.distanceKm);
   }
