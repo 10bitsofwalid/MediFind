@@ -36,14 +36,35 @@ export const Navbar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, selectedUserType, openWelcomeModal, logout } = useAuth();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileMenuPath, setMobileMenuPath] = useState<string | null>(null);
+  const [isScrolled, setIsScrolled] = useState(false);
   const mobileMenuBtnRef = useRef<HTMLButtonElement | null>(null);
+  const mobileMenuOpen = mobileMenuPath === location.pathname;
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 8);
+    };
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 960) {
+        setMobileMenuPath(null);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setMobileMenuOpen(false);
+        setMobileMenuPath(null);
         mobileMenuBtnRef.current?.focus();
       }
     };
@@ -122,223 +143,138 @@ export const Navbar: React.FC = () => {
   const handleLogout = () => {
     const roleBeforeLogout = user?.role ?? selectedUserType;
     logout();
-    setMobileMenuOpen(false);
+    setMobileMenuPath(null);
     navigate(roleBeforeLogout === 'CUSTOMER' ? '/' : '/login');
   };
 
   return (
-    <header
-      style={{
-        backgroundColor: 'var(--color-surface-panel)',
-        borderBottom: '1px solid var(--color-border-default)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 100,
-        backdropFilter: 'blur(10px)',
-      }}
-    >
-      <div className="navbar-inner">
-        {/* Brand Logo & Title */}
-        <Link
-          to={brandHomePath}
-          className="navbar-brand"
-          aria-label={`MediFind ${brandSubtitle}`}
-        >
-          <BrandLogo size={36} style={{ flexShrink: 0 }} />
-          <div className="navbar-brand-text">
-            <span style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-              MediFind
-            </span>
-            <span className="navbar-brand-subtitle">
-              {brandSubtitle}
-            </span>
-          </div>
-        </Link>
-
-        {/* Desktop Navigation Links */}
-        <nav
-          className="desktop-nav"
-          aria-label="Main Navigation"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-        >
-          {navLinks.map(({ to, label, icon: Icon }) => {
-            const isActive = location.pathname === to;
-            return (
-              <Link
-                key={to}
-                to={to}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '8px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '13px',
-                  fontWeight: isActive ? 600 : 500,
-                  textDecoration: 'none',
-                  color: isActive ? 'var(--color-action-primary)' : 'var(--color-text-secondary)',
-                  backgroundColor: isActive ? 'var(--color-action-subtle)' : 'transparent',
-                  minHeight: '38px',
-                  whiteSpace: 'nowrap',
-                }}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                <Icon size={15} aria-hidden="true" />
-                <span>{label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* User Type Switcher, Sign Out & Mobile Menu Toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-          <button
-            type="button"
-            onClick={openWelcomeModal}
-            className="btn-secondary navbar-role-pill"
-            aria-label={`Switch user type (current: ${effectiveRole ? USER_TYPE_LABELS[effectiveRole] : 'none selected'})`}
-          >
-            <UserCheck size={13} color="var(--color-action-primary)" aria-hidden="true" />
-            <span className="navbar-role-label-full">
-              {effectiveRole ? USER_TYPE_LABELS[effectiveRole] : 'Select Type'}
-            </span>
-            <span className="navbar-role-label-short">
-              {effectiveRole ? USER_TYPE_SHORT_LABELS[effectiveRole] : 'Role'}
-            </span>
-            <RefreshCw size={11} color="var(--color-text-secondary)" aria-hidden="true" />
-          </button>
-
-          {user && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="desktop-nav btn-secondary"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '6px 10px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border-default)',
-                backgroundColor: 'var(--color-surface-panel)',
-                color: 'var(--color-text-secondary)',
-                fontSize: '12px',
-                fontWeight: 500,
-                cursor: 'pointer',
-                minHeight: '36px',
-                whiteSpace: 'nowrap',
-              }}
-              aria-label="Sign out"
-            >
-              <LogOut size={13} aria-hidden="true" />
-              <span>Sign out</span>
-            </button>
-          )}
-
-          {/* Mobile hamburger menu toggle */}
-          <button
-            ref={mobileMenuBtnRef}
-            type="button"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="mobile-menu-btn"
-            style={{
-              display: 'none',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '44px',
-              height: '44px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border-default)',
-              backgroundColor: 'var(--color-surface-panel)',
-              color: 'var(--color-text-primary)',
-              cursor: 'pointer',
-            }}
-            aria-expanded={mobileMenuOpen}
-            aria-controls="mobile-nav-drawer"
-            aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
-          >
-            {mobileMenuOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
-          </button>
-        </div>
-      </div>
-
-      {/* Mobile Drawer Backdrop & Menu (resolves UI-05) */}
+    <header className="navbar-shell">
       {mobileMenuOpen && (
-        <>
-          <div
-            onClick={() => setMobileMenuOpen(false)}
-            aria-hidden="true"
-            style={{
-              position: 'fixed',
-              top: '64px',
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(23, 43, 58, 0.35)',
-              zIndex: 90,
-            }}
-          />
+        <div
+          className="mobile-nav-backdrop"
+          onClick={() => setMobileMenuPath(null)}
+          aria-hidden="true"
+        />
+      )}
+
+      <div className="navbar-floating-wrap">
+        <div className={`navbar-floating${isScrolled ? ' is-scrolled' : ''}`}>
+          <div className="navbar-inner">
+            {/* Brand Logo & Title */}
+            <Link
+              to={brandHomePath}
+              className="navbar-brand"
+              aria-label={`MediFind ${brandSubtitle}`}
+            >
+              <BrandLogo size={34} style={{ flexShrink: 0 }} />
+              <div className="navbar-brand-text">
+                <span className="navbar-brand-title">MediFind</span>
+                <span className="navbar-brand-subtitle">{brandSubtitle}</span>
+              </div>
+            </Link>
+
+            {/* Desktop Navigation Links */}
+            <nav className="desktop-nav" aria-label="Main Navigation">
+              {navLinks.map(({ to, label, icon: Icon }) => {
+                const isActive = location.pathname === to;
+                return (
+                  <Link
+                    key={to}
+                    to={to}
+                    className={`navbar-nav-link${isActive ? ' is-active' : ''}`}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <Icon size={15} aria-hidden="true" />
+                    <span>{label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+
+            {/* User Type Switcher, Sign Out & Mobile Menu Toggle */}
+            <div className="navbar-actions">
+              <button
+                type="button"
+                onClick={openWelcomeModal}
+                className="btn-secondary navbar-role-pill"
+                aria-label={`Switch user type (current: ${effectiveRole ? USER_TYPE_LABELS[effectiveRole] : 'none selected'})`}
+              >
+                <UserCheck size={13} color="var(--color-action-primary)" aria-hidden="true" />
+                <span className="navbar-role-label-full">
+                  {effectiveRole ? USER_TYPE_LABELS[effectiveRole] : 'Select Type'}
+                </span>
+                <span className="navbar-role-label-short">
+                  {effectiveRole ? USER_TYPE_SHORT_LABELS[effectiveRole] : 'Role'}
+                </span>
+                <RefreshCw size={11} color="var(--color-text-secondary)" aria-hidden="true" />
+              </button>
+
+              {user && (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="desktop-nav btn-secondary navbar-signout-btn"
+                  aria-label="Sign out"
+                >
+                  <LogOut size={13} aria-hidden="true" />
+                  <span>Sign out</span>
+                </button>
+              )}
+
+              {/* Mobile / Tablet hamburger menu toggle */}
+              <button
+                ref={mobileMenuBtnRef}
+                type="button"
+                onClick={() =>
+                  setMobileMenuPath((prev) => (prev === location.pathname ? null : location.pathname))
+                }
+                className="mobile-menu-btn"
+                aria-expanded={mobileMenuOpen}
+                aria-controls="mobile-nav-drawer"
+                aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              >
+                {mobileMenuOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Floating Mobile / Tablet Navigation Drawer */}
+        {mobileMenuOpen && (
           <nav
             id="mobile-nav-drawer"
             className="mobile-nav-drawer"
             aria-label="Mobile Navigation"
-            style={{
-              position: 'relative',
-              zIndex: 95,
-              padding: '12px 16px',
-              backgroundColor: 'var(--color-surface-panel)',
-              borderTop: '1px solid var(--color-border-default)',
-              boxShadow: 'var(--shadow-md)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-            }}
           >
-            {navLinks.map(({ to, label, icon: Icon }) => (
-              <Link
-                key={to}
-                to={to}
-                onClick={() => setMobileMenuOpen(false)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '12px',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '15px',
-                  textDecoration: 'none',
-                  color: location.pathname === to ? 'var(--color-action-primary)' : 'var(--color-text-primary)',
-                  backgroundColor: location.pathname === to ? 'var(--color-action-subtle)' : 'transparent',
-                }}
-              >
-                <Icon size={18} aria-hidden="true" />
-                <span>{label}</span>
-              </Link>
-            ))}
+            {navLinks.map(({ to, label, icon: Icon }) => {
+              const isActive = location.pathname === to;
+              return (
+                <Link
+                  key={to}
+                  to={to}
+                  onClick={() => setMobileMenuPath(null)}
+                  className={`mobile-nav-link${isActive ? ' is-active' : ''}`}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  <Icon size={18} aria-hidden="true" />
+                  <span>{label}</span>
+                </Link>
+              );
+            })}
+
+            {navLinks.length > 0 && <div className="mobile-drawer-divider" aria-hidden="true" />}
 
             <button
               type="button"
               onClick={() => {
-                setMobileMenuOpen(false);
+                setMobileMenuPath(null);
                 openWelcomeModal();
               }}
+              className="mobile-drawer-action"
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px',
-                borderRadius: 'var(--radius-md)',
-                fontSize: '15px',
                 border: '1px solid var(--color-border-default)',
-                backgroundColor: 'var(--color-surface-canvas)',
+                backgroundColor: '#f6f8fa',
                 color: 'var(--color-action-primary)',
-                fontWeight: 600,
-                cursor: 'pointer',
-                textAlign: 'left',
               }}
             >
               <RefreshCw size={18} aria-hidden="true" />
@@ -349,18 +285,11 @@ export const Navbar: React.FC = () => {
               <button
                 type="button"
                 onClick={handleLogout}
+                className="mobile-drawer-action"
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '12px',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '15px',
                   border: 'none',
                   backgroundColor: 'transparent',
                   color: 'var(--color-status-problem)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
                 }}
               >
                 <LogOut size={18} aria-hidden="true" />
@@ -368,8 +297,8 @@ export const Navbar: React.FC = () => {
               </button>
             )}
           </nav>
-        </>
-      )}
+        )}
+      </div>
     </header>
   );
 };

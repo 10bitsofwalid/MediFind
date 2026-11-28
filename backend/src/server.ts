@@ -272,7 +272,7 @@ export async function syncDatabaseIndexes(): Promise<void> {
 
 async function startServer() {
   try {
-    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 2000 });
+    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
     console.log(`[Database] Connected to MongoDB at ${MONGODB_URI}`);
     await syncDatabaseIndexes();
   } catch (err: unknown) {
